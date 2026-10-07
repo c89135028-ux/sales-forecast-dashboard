@@ -1263,16 +1263,17 @@ document.addEventListener('click', ev=>{
 });
 document.addEventListener('keydown', ev=>{ if(ev.key==='Escape') closeColPop(); });
 
-function wideTable(shown, colLabel, curTot, onName, filterKey, fstat, colw, twoCol, auxCols, tblKey){
+function wideTable(shown, colLabel, curTot, onName, filterKey, fstat, colw, twoCol, auxCols, tblKey, excludeCols){
   const baseW = colw || COLW;
   const W = (state.colW[tblKey] && state.colW[tblKey].length===baseW.length) ? state.colW[tblKey].slice() : baseW.slice();
   const nameN = twoCol ? 2 : 1;
   const auxN = auxCols ? auxCols.length : 0;
   const headN = 1 + auxN + nameN;
   const hide = state.hideCols;
-  const visCols = COL_DEF.filter(c=>!hide.has(c.k));
+  const hideAll = excludeCols && excludeCols.size ? new Set([...hide, ...excludeCols]) : hide;
+  const visCols = COL_DEF.filter(c=>!hideAll.has(c.k));
   const colOf = i => (i>=headN) ? COL_DEF[i-headN] : null;
-  let totalW=0; W.forEach((w,i)=>{ const d=colOf(i); if(!d || !hide.has(d.k)) totalW+=w; });
+  let totalW=0; W.forEach((w,i)=>{ const d=colOf(i); if(!d || !hideAll.has(d.k)) totalW+=w; });
   const cols = W.map((w,i)=>{ const d=colOf(i); return `<col style="width:${w}px"${d?` data-c="${d.k}"`:''}>`; }).join('');
   // 固定列（#/附属列/名称列）的 left 偏移，由前面各列宽度累加得到
   let acc=0; const L=[];
@@ -1313,7 +1314,7 @@ function wideTable(shown, colLabel, curTot, onName, filterKey, fstat, colw, twoC
   const body = shown.length
     ? shown.map((r,i)=>rowHTML(r,i,colLabel,curTot, onName!=null && r.name===onName, twoCol, auxOf(r), clkRate)).join('')
     : `<tr><td class="stk c-rank"></td>${auxEmpty}<td class="stk c-name" style="font-weight:400;color:var(--muted)">已全部筛除</td>${twoCol?'<td class="stk c-name2"></td>':''}<td colspan="${spanN}" style="text-align:center;color:var(--muted)">点击表头筛选按钮重新勾选要显示的项目</td></tr>`;
-  const hideAttr = [...hide].join(' ');
+  const hideAttr = [...hideAll].join(' ');
   return `<div class="tscroll"><table class="wide${auxN?' lst':''}" style="min-width:${totalW}px;${stkVar}"`
     + ` data-tkey="${esc(tblKey||'')}" data-headn="${headN}" data-auxn="${auxN}" data-twocol="${twoCol?'1':'0'}"`
     + `${hideAttr?` data-hide="${hideAttr}"`:''}>${head}<tbody>${body}</tbody></table></div>`;
@@ -1461,7 +1462,7 @@ function dimBlock(section, dimKey, blockNo){
     </div>
     <div class="block-body">
       ${rowsAll.length? compBar(shown, base, DIM_LABEL[dimKey]) : ''}
-      ${rowsAll.length? wideTable(shown, DIM_LABEL[dimKey], curTot, state.drill[dimKey], dimKey, fstat, dimKey==='国家Listing'?COLW_LST:(dimKey==='SKU'?COLW_SKU:null), dimKey==='SKU', auxCols.length? auxCols : null, dimKey) : '<div class="empty">当前筛选条件下暂无数据</div>'}
+      ${rowsAll.length? wideTable(shown, DIM_LABEL[dimKey], curTot, state.drill[dimKey], dimKey, fstat, dimKey==='国家Listing'?COLW_LST:(dimKey==='SKU'?COLW_SKU:null), dimKey==='SKU', auxCols.length? auxCols : null, dimKey, dimKey==='SKU'?new Set(['f1q','bandShare']):null) : '<div class="empty">当前筛选条件下暂无数据</div>'}
       ${base.length>shown.length?`<div class="more"><button data-more="${dimKey}">展开剩余 ${base.length-shown.length} 项 ▾</button></div>`:''}
       ${(topN>1e5&&base.length>(DEF_TOP[dimKey]||12))?`<div class="more"><button data-collapse="${dimKey}">收起（只看前 ${DEF_TOP[dimKey]||12} 项）▴</button></div>`:''}
     </div>
