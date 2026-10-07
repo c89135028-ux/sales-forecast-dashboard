@@ -1,0 +1,9 @@
+# 忽略历史备份快照（体积大，且属于本地归档）
+备份/
+
+# 测试失败时的调试产物
+build/_composed_err.js
+
+# Python
+__pycache__/
+*.pyc
