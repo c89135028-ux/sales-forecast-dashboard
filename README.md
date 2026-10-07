@@ -2,6 +2,12 @@
 
 单文件、零外部依赖的销售预测达成分析看板（`销售预测达成看板.html`，数据内联，双击即可离线打开）。
 
+- 🌐 **在线看板**：<https://c89135028-ux.github.io/sales-forecast-dashboard/>
+- 📦 **仓库**：<https://github.com/c89135028-ux/sales-forecast-dashboard>
+
+> 仓库名使用 `sales-forecast-dashboard`（GitHub 不支持中文仓库名），中文标题见仓库 description。
+> 站点入口页为根目录 `index.html`（与 `销售预测达成看板.html` 内容一致）。
+
 **周报与月报在同一份看板里**，靠筛选栏最左侧的「粒度」芯片 `[周] [月]` 切换。
 
 ## 看板能力
