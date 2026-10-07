@@ -51,8 +51,7 @@
   与 `国家listing对应表.xlsx` 的单 SKU 编码不同（852 个取值里差 25 个）。**只有源表为空的行才查对应表补**，补不上归「（未标注）」。
 - ⚠️ 源表末行的「合计」行会把总量翻倍（月表 260,010 → 520,020），**必须先剔除 `时间列 == '合计'`**。
 - listing 对应表：`E:/不重要文件/国家listing对应表.xlsx`（列＝国家/最早SKU/最新国家Listing，3593 行），用于**回填源表中为空的**国家Listing（常量 `LISTING_MAP`）。
-- 备份：`备份/YYYY-MM-DD_HHmm/` 与同名 zip，**不覆盖历史快照**。内容 = 交付 HTML + `build/` 全量 + **`.workbuddy/memory/*.md`（项目记忆库，2026-09-24 起纳入）**。
-  校验脚本 `build/verify_backup.py [时间戳]`（不传参取最新快照）：zip 完整性 + 解压↔快照 md5 + 显式清单↔工作区 + **快照内每个文件↔工作区同名路径的全量扫描**（快照独有文件只提示不判失败）+ **反向检查「工作区 → 快照」**（根目录 `*.html` / `build/*` / `.workbuddy/memory/*.md` 有没有漏档，`_composed_err.js` 是测试失败时的调试产物、列在忽略名单）。两个方向都 OK 才算过。
+- 备份：`备份/YYYY-MM-DD_HHmm/` 与同名 zip，**不覆盖历史快照**。内容 = 交付 HTML + `build/` 全量 + **`.workbuddy/memory/*.md`（项目记忆库，2026-09-24 起纳入）**。  校验脚本 `build/verify_backup.py [时间戳]`（不传参取最新快照）：zip 完整性 + 解压↔快照 md5 + 显式清单↔工作区 + **快照内每个文件↔工作区同名路径的全量扫描**（快照独有文件只提示不判失败）+ **反向检查「工作区 → 快照」**（根目录 `*.html` / `build/*` / `.workbuddy/memory/*.md` 有没有漏档，`_composed_err.js` 是测试失败时的调试产物、列在忽略名单）。两个方向都 OK 才算过。
 
 ## 口径（用户明确给定，勿擅改）
 - 达成率：M版达成 = 订单销量 ÷ 销售预测(最新版)；M-1版达成 ÷ 销售预测(M-1)；加权达成 ÷ 销售预测(加权)；M版断货清洗达成率 = 断货清洗(最新版) ÷ 预测(最新版)；加权断货清洗达成率 = 断货清洗 ÷ 预测(加权)。
@@ -99,6 +98,28 @@
 - **选中单个站点时隐藏「各站点表现」小节标题 + 站点卡片**（内容与上方 KPI 行重复）；「全部站点」时显示。站点明细表（15 列完整指标）保留。
 - **站点明细表不打「已下钻」标记**：站点是在顶部 chips 选的，`wideTable` 的 `onName` 固定传 `null`（只呈现该站点数据）。该标记只留给维度板块（点行下钻时用）。
 - 颜色惯例：涨/达成用红、跌/未达成用绿（国内习惯）；货币 ¥。
+
+## 发布（GitHub 仓库 + Pages）
+- 📦 仓库：<https://github.com/c89135028-ux/sales-forecast-dashboard>（**public**）
+- 🌐 在线看板：<https://c89135028-ux.github.io/sales-forecast-dashboard/>（Pages，source = `main` / `/`）
+- **入口页必须是仓库根目录的 `index.html`**：内容与 `销售预测达成看板.html` **逐字节一致**（md5 相同），
+  中文名文件保留供本地双击。**新增/更新数据后两个文件都要同步替换**（cp 一次即可）。
+- ⚠️ **GitHub 不支持中文仓库名**（传中文会被规范化成 `-`）→ 建仓库一律用英文名 `sales-forecast-dashboard`，
+  中文标题写进仓库 `description`。
+- ⚠️ **Free 计划的私有仓库无法启用 Pages**（422 `does not support GitHub Pages for this repository`）→ 先 `PATCH {"private": false}` 转公开。
+- 启用 Pages（无 `gh` CLI，用 curl + git 凭据）：
+  ```bash
+  TOKEN=$(printf 'protocol=https\nhost=github.com\n\n' | git credential fill | sed -n 's/^password=//p')
+  curl -X POST -H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.github+json" \
+    https://api.github.com/repos/c89135028-ux/sales-forecast-dashboard/pages \
+    -d '{"source":{"branch":"main","path":"/"}}'   # → 201
+  ```
+- ⚠️ 沙箱里 **`git push` / `curl -X POST` 可能被 SIGTERM 中断**（无输出 exit 1）→ 重试通常可过；
+  先 `git log` / `git ls-remote` 确认是否已成功。push 用
+  `git push "https://USER:$TOKEN@github.com/USER/REPO.git" main`，**别用裸 `git push origin main`**（会挂起在凭据交互）。
+- ⚠️ `git credential fill` **不能放进 `bash -c` 子 shell**（token 变空 → 401），必须直接管道。
+- `.gitignore` 忽略：`备份/`、`build/_composed_err.js`、`__pycache__/`、`dist/`。
+- 线上比本地少约 1,665 字节 = Git 的 CRLF→LF 规范化，内容无损。
 
 ## 复用
 - 同类「Excel → 多维度看板」需求可直接复用技能 `~/.workbuddy/skills/dimension-kpi-dashboard/`（SKILL.md 含全部踩坑约定，assets/ 内有模板与脚本）。

@@ -4,6 +4,9 @@
 # 测试失败时的调试产物
 build/_composed_err.js
 
+# 发布中转目录（Pages 入口已改为根目录 index.html）
+dist/
+
 # Python
 __pycache__/
 *.pyc
