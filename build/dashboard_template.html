@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>拉美销售预测达成看板 · 多维度达成与缺口分析</title>
+<title>拉美销售预测达成看板</title>
 <style>
 :root{
   --bg:#f1f4fa; --panel:#ffffff; --ink:#15203a; --ink2:#3e4d6d; --muted:#77869f;
@@ -496,7 +496,7 @@ function loadMode(key){
   state.site = 'ALL'; state.drill = {}; state.hide = {}; state.hideAux = {}; state.top = {}; state.trendIdx = state.trendIdx || 'mRate';
   state.sort = {}; DIM_KEYS.forEach(k=>{ state.sort[k] = {k:'a', dir:-1}; });   // 默认各表都按订单销量从高到低
   state.sort['_site'] = {k:'a', dir:-1};
-  document.title = `拉美销售预测达成看板 · ${U}维度达成与缺口分析`;
+  document.title = `拉美销售预测达成看板`;
 }
 
 /* ---------- helpers ---------- */
