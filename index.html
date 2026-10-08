@@ -640,7 +640,7 @@ function renderFilters(){
   const bc=document.getElementById('bizChips');
   const bizKeys = D.dims['业务组'] ? Object.keys(D.dims['业务组']) : [];
   bc.innerHTML = `<div class="chip ${state.bizGroup==='ALL'?'on':''}" data-biz="ALL">全部业务组</div>` +
-    bizKeys.map(k=>`<div class="chip ${state.bizGroup===k?'on':''}" data-biz="${esc(k)}">${esc(D.dims['业务组'][k])}</div>`).join('');
+    bizKeys.map(k=>`<div class="chip ${state.bizGroup==k?'on':''}" data-biz="${esc(k)}">${esc(D.dims['业务组'][k])}</div>`).join('');
   bc.querySelectorAll('.chip').forEach(el=>el.onclick=()=>{
     const v=el.dataset.biz; state.bizGroup = v==='ALL'? 'ALL' : +v; renderAll();
   });
