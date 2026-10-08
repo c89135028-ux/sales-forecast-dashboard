@@ -1160,13 +1160,16 @@ window.addEventListener('resize', ()=>{
 });
 
 /* 每个维度表在名称列前挂的「身份列」；每一列都可独立筛选（筛选键 = 维度@列名） */
-const AUX_DEFS = { '国家Listing': ['三级分类'], 'SKU': ['三级分类', '国家Listing'] };
+const AUX_DEFS = { '产品组': ['BU'], '国家Listing': ['三级分类'], 'SKU': ['三级分类', '国家Listing'] };
 
 const COLW_LST = COLW.slice();
 COLW_LST.splice(1, 0, 118);     // 插入「三级分类」列
 COLW_LST[2] = 216;             // 国家Listing 编号较长，名称列加宽
 const COLW_SKU = COLW.slice();                        // SKU：前面 三级分类 + 国家Listing，再拆 最早SKU + 预测SKU
 COLW_SKU.splice(1, 1, 118, 216, 132, 146);
+const COLW_PG = COLW.slice();                         // 产品组：前面插 BU 列
+COLW_PG.splice(1, 0, 90);
+COLW_PG[2] = 180;                                     // 产品组名加宽
 
 /* ---------- 自定义列：列定义与面板 ---------- */
 const COL_GROUPS = [
@@ -1472,7 +1475,7 @@ function dimBlock(section, dimKey, blockNo){
     </div>
     <div class="block-body">
       ${rowsAll.length? compBar(shown, base, DIM_LABEL[dimKey]) : ''}
-      ${rowsAll.length? wideTable(shown, DIM_LABEL[dimKey], curTot, state.drill[dimKey], dimKey, fstat, dimKey==='国家Listing'?COLW_LST:(dimKey==='SKU'?COLW_SKU:null), dimKey==='SKU', auxCols.length? auxCols : null, dimKey, dimKey==='SKU'?new Set(['f1q','bandShare']):null) : '<div class="empty">当前筛选条件下暂无数据</div>'}
+      ${rowsAll.length? wideTable(shown, DIM_LABEL[dimKey], curTot, state.drill[dimKey], dimKey, fstat, dimKey==='国家Listing'?COLW_LST:(dimKey==='SKU'?COLW_SKU:(dimKey==='产品组'?COLW_PG:null)), dimKey==='SKU', auxCols.length? auxCols : null, dimKey, dimKey==='SKU'?new Set(['f1q','bandShare']):null) : '<div class="empty">当前筛选条件下暂无数据</div>'}
       ${base.length>shown.length?`<div class="more"><button data-more="${dimKey}">展开剩余 ${base.length-shown.length} 项 ▾</button></div>`:''}
       ${(topN>1e5&&base.length>(DEF_TOP[dimKey]||12))?`<div class="more"><button data-collapse="${dimKey}">收起（只看前 ${DEF_TOP[dimKey]||12} 项）▴</button></div>`:''}
     </div>
