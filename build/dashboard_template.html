@@ -408,6 +408,7 @@ footer .fh{font-size:13px;font-weight:700;color:var(--ink2);margin-bottom:4px}
       <div class="fgroup"><label>粒度</label><div class="chips" id="modeChips"></div></div>
       <div class="fgroup"><label id="periodLab">周</label><select id="periodSel" title="选择数据周期"></select></div>
       <div class="fgroup"><label>站点</label><div class="chips" id="siteChips"></div></div>
+      <div class="fgroup"><label>业务组</label><div class="chips" id="bizChips"></div></div>
     </div>
     <div class="drillbar" id="drillBar"></div>
   </div>
@@ -475,7 +476,7 @@ let U = '周';          // 周期单位（「周」/「月」），所有文案�
 let UNAME = '周报';    // logo 角标
 let TWIN = 4;          // 趋势图默认展示最近几个周期
 const state = { mode:null,            // 当前粒度 key
-                pidx: 0, site:'ALL', drill:{}, sort:{}, top:{}, hide:{}, hideCols:new Set(), trendIdx:'mRate',
+                pidx: 0, site:'ALL', bizGroup:'ALL', drill:{}, sort:{}, top:{}, hide:{}, hideCols:new Set(), trendIdx:'mRate',
                 hideAux:{},   // 附属列（国家Listing 表的三级分类）局部筛选：dimKey -> 排除集合
                 colW:{} };    // 自定义列宽：tableKey -> 宽度数组（拖动表头边界调整）
 
@@ -493,7 +494,7 @@ function loadMode(key){
   REC = D.recs.map(arr=>{ const o={}; FLD.forEach((k,i)=>o[k]=arr[i]); return o; });
   NREC = REC.length;
   state.pidx = D.periods.length-1;
-  state.site = 'ALL'; state.drill = {}; state.hide = {}; state.hideAux = {}; state.top = {}; state.trendIdx = state.trendIdx || 'mRate';
+  state.site = 'ALL'; state.bizGroup = 'ALL'; state.drill = {}; state.hide = {}; state.hideAux = {}; state.top = {}; state.trendIdx = state.trendIdx || 'mRate';
   state.sort = {}; DIM_KEYS.forEach(k=>{ state.sort[k] = {k:'a', dir:-1}; });   // 默认各表都按订单销量从高到低
   state.sort['_site'] = {k:'a', dir:-1};
   document.title = `拉美销售预测达成看板`;
@@ -544,6 +545,7 @@ function recsFor(opts){
     const r=REC[i];
     if(!allSites && state.site!=='ALL' && r.s!==state.site) continue;
     if(usePeriod && r.w!==pIdx) continue;
+    if(state.bizGroup!=='ALL' && r.g!==state.bizGroup) continue;
     if(!matchDrill(r)) continue;
     out.push(r);
   }
@@ -633,6 +635,14 @@ function renderFilters(){
     D.sites.map((s,i)=>`<div class="chip ${state.site===i?'on':''}" data-site="${i}">${esc(s.name)}</div>`).join('');
   sc.querySelectorAll('.chip').forEach(el=>el.onclick=()=>{
     const v=el.dataset.site; state.site = v==='ALL'? 'ALL' : +v; renderAll();
+  });
+
+  const bc=document.getElementById('bizChips');
+  const bizKeys = D.dims['业务组'] ? Object.keys(D.dims['业务组']) : [];
+  bc.innerHTML = `<div class="chip ${state.bizGroup==='ALL'?'on':''}" data-biz="ALL">全部业务组</div>` +
+    bizKeys.map(k=>`<div class="chip ${state.bizGroup===k?'on':''}" data-biz="${esc(k)}">${esc(D.dims['业务组'][k])}</div>`).join('');
+  bc.querySelectorAll('.chip').forEach(el=>el.onclick=()=>{
+    const v=el.dataset.biz; state.bizGroup = v==='ALL'? 'ALL' : +v; renderAll();
   });
 
   const db=document.getElementById('drillBar');
