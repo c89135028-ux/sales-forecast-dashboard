@@ -476,13 +476,14 @@ let U = '周';          // 周期单位（「周」/「月」），所有文案�
 let UNAME = '周报';    // logo 角标
 let TWIN = 4;          // 趋势图默认展示最近几个周期
 const state = { mode:null,            // 当前粒度 key
-                pidx: 0, site:'ALL', bizGroup:'ALL', drill:{}, sort:{}, top:{}, hide:{}, hideCols:new Set(), trendIdx:'mRate',
+                pidx: 0, site:'ALL', bizGroup:'ALL', drill:{}, sort:{}, top:{}, hide:{}, hideCols:{}, trendIdx:'mRate',
                 hideAux:{},   // 附属列（国家Listing 表的三级分类）局部筛选：dimKey -> 排除集合
                 colW:{} };    // 自定义列宽：tableKey -> 宽度数组（拖动表头边界调整）
 
 /* 装载某个粒度：替换数据与单位文案，并重置与数据相关的筛选状态。
    两个粒度的周期数、维度取值、下钻项都不同，不重置会出现下标越界 / 下钻命中空集。
    列宽 state.colW 与自定义列 state.hideCols 与数据无关，保留。 */
+function hideColsSet(tblKey){ if(!state.hideCols[tblKey]) state.hideCols[tblKey]=new Set(); return state.hideCols[tblKey]; }
 function loadMode(key){
   const modes = DB.modes || [];
   if(!modes.length) throw new Error('数据里没有 modes');
@@ -665,8 +666,8 @@ function renderSite(){
   const cur = recsFor({});
   const tot = sumRecs(cur);
   const scopeTxt = `${periodLabel(state.pidx)}｜${state.site==='ALL'?'全部站点':D.sites[state.site].name}`;
-  document.getElementById('siteTools').innerHTML = colBtnHTML();
-  document.querySelector('#siteTools [data-colopen]').onclick=(ev)=>{ ev.stopPropagation(); openColPop(ev.currentTarget); };
+  document.getElementById('siteTools').innerHTML = colBtnHTML('_site');
+  document.querySelector('#siteTools [data-colopen]').onclick=(ev)=>{ ev.stopPropagation(); openColPop(ev.currentTarget, '_site'); };
   document.getElementById('siteScope').textContent = scopeTxt;
 
   // 站点卡片：只在「全部站点」时展示。选中单个站点时它与上方 KPI 行内容重复，整块隐藏
@@ -1197,22 +1198,24 @@ const COL_DEF = [
   {k:'f1q',      g:3, t:'加权版70%-130%的预测量', th:'th-band num', v:o=>o.f1q},
   {k:'bandShare',g:3, t:'预测量占比',          th:'th-band', v:o=>bandSelf(o)},
 ];
-const colBtnHTML = ()=>{
-  const n = state.hideCols.size;
-  return `<button class="colbtn${n?' on':''}" data-colopen="1" title="自定义要显示的指标列">自定义列${n?`<b>${COL_DEF.length-n}/${COL_DEF.length}</b>`:''}</button>`;
+const colBtnHTML = (tblKey)=>{
+  const h = hideColsSet(tblKey);
+  const n = h.size;
+  return `<button class="colbtn${n?' on':''}" data-colopen="1" data-tblkey="${esc(tblKey)}" title="自定义要显示的指标列">自定义列${n?`<b>${COL_DEF.length-n}/${COL_DEF.length}</b>`:''}</button>`;
 };
 
 function renderColPop(){
   const el=document.getElementById('colpop');
   if(!el) return;
-  const n=COL_DEF.length-state.hideCols.size;
+  const hc = hideColsSet(colTblKey);
+  const n=COL_DEF.length-hc.size;
   let list='';
   COL_GROUPS.forEach((g,gi)=>{
     const items=COL_DEF.filter(c=>c.g===gi);
     if(!items.length) return;
     list += `<div class="cpgrp">${g.name}</div>` + items.map(c=>{
       const tx = c.t.replace('<br>','');
-      return `<label class="cpitem" data-ct="${esc(tx)}"><input type="checkbox" data-ck="${c.k}"${state.hideCols.has(c.k)?'':' checked'}> ${tx}</label>`;
+      return `<label class="cpitem" data-ct="${esc(tx)}"><input type="checkbox" data-ck="${c.k}"${hc.has(c.k)?'':' checked'}> ${tx}</label>`;
     }).join('');
   });
   el.innerHTML = `<div class="cph"><b>自定义列</b><em>已选 ${n} / ${COL_DEF.length}</em></div>`
@@ -1222,27 +1225,28 @@ function renderColPop(){
 }
 
 let colQ='';
-
+let colTblKey='';  // 当前打开的列面板所属表 key
 let colAnch=null;
-function openColPop(anchor){
+function openColPop(anchor, tblKey){
   const el=document.getElementById('colpop');
   if(!el) return;
-  colAnch=anchor;
+  colAnch=anchor; colTblKey=tblKey;
   renderColPop();
   el.hidden=false;
   placePop(el, anchor, true);
 }
 
-function closeColPop(){ const el=document.getElementById('colpop'); if(el) el.hidden=true; colQ=''; }
+function closeColPop(){ const el=document.getElementById('colpop'); if(el) el.hidden=true; colQ=''; colTblKey=''; }
 
 function applyCols(){ renderAll(); renderColPop(); }
 
 const colpopEl=document.getElementById('colpop');
 colpopEl.addEventListener('click', ev=>{
   const b=ev.target.closest('button'); if(!b) return;
-  if('call' in b.dataset){ state.hideCols.clear(); applyCols(); }
-  else if('cnone' in b.dataset){ state.hideCols=new Set(COL_DEF.map(c=>c.k)); applyCols(); }
-  else if('cdef' in b.dataset){ state.hideCols=new Set(); applyCols(); }
+  const h = hideColsSet(colTblKey);
+  if('call' in b.dataset){ h.clear(); applyCols(); }
+  else if('cnone' in b.dataset){ state.hideCols[colTblKey]=new Set(COL_DEF.map(c=>c.k)); applyCols(); }
+  else if('cdef' in b.dataset){ state.hideCols[colTblKey]=new Set(); applyCols(); }
   else if('cdone' in b.dataset){ closeColPop(); }
 });
 colpopEl.addEventListener('input', ev=>{
@@ -1265,7 +1269,8 @@ colpopEl.addEventListener('input', ev=>{
 });
 colpopEl.addEventListener('change', ev=>{
   const cb=ev.target.closest('input[data-ck]'); if(!cb) return;
-  if(cb.checked) state.hideCols.delete(cb.dataset.ck); else state.hideCols.add(cb.dataset.ck);
+  const h = hideColsSet(colTblKey);
+  if(cb.checked) h.delete(cb.dataset.ck); else h.add(cb.dataset.ck);
   applyCols();
 });
 document.addEventListener('click', ev=>{
@@ -1282,7 +1287,7 @@ function wideTable(shown, colLabel, curTot, onName, filterKey, fstat, colw, twoC
   const nameN = twoCol ? 2 : 1;
   const auxN = auxCols ? auxCols.length : 0;
   const headN = 1 + auxN + nameN;
-  const hide = state.hideCols;
+  const hide = hideColsSet(tblKey);
   const hideAll = excludeCols && excludeCols.size ? new Set([...hide, ...excludeCols]) : hide;
   const visCols = COL_DEF.filter(c=>!hideAll.has(c.k));
   const colOf = i => (i>=headN) ? COL_DEF[i-headN] : null;
@@ -1337,7 +1342,7 @@ function wideTable(shown, colLabel, curTot, onName, filterKey, fstat, colw, twoC
 function applyColW(table, arr){
   const cols=[...table.querySelectorAll('col')];
   cols.forEach((c,i)=>{ if(arr[i]) c.style.width=arr[i]+'px'; });
-  const hide=state.hideCols;
+  const hide = hideColsSet(table.dataset.tkey);
   let totalW=0;
   cols.forEach((c,i)=>{ const k=c.dataset.c; if(!k || !hide.has(k)) totalW += (arr[i]||parseFloat(c.style.width)||0); });
   table.style.minWidth=totalW+'px';
@@ -1471,7 +1476,7 @@ function dimBlock(section, dimKey, blockNo){
       <div class="btitle"><span class="bnum">${blockNo}</span><h2>${DIM_LABEL[dimKey]}</h2>
         <span class="cnt">${base.length!==rowsAll.length? `${base.length} / ${rowsAll.length} 项` : `${rowsAll.length} 项`}</span>
         ${scoped?`<span class="scoped">已受上级下钻过滤</span>`:''}</div>
-      <div class="block-tools">${colBtnHTML()}</div>
+      <div class="block-tools">${colBtnHTML(dimKey)}</div>
     </div>
     <div class="block-body">
       ${rowsAll.length? compBar(shown, base, DIM_LABEL[dimKey]) : ''}
@@ -1498,7 +1503,7 @@ function dimBlock(section, dimKey, blockNo){
     };
   });
   const cbtn=section.querySelector('[data-colopen]');
-  if(cbtn) cbtn.onclick=(ev)=>{ ev.stopPropagation(); openColPop(cbtn); };
+  if(cbtn) cbtn.onclick=(ev)=>{ ev.stopPropagation(); openColPop(cbtn, dimKey); };
   section.querySelectorAll('button[data-fopen]').forEach(b=>{
     const key=b.dataset.fopen, c=auxCols.find(x=>x.fkey===key);
     b.onclick=(ev)=>{ ev.stopPropagation(); openFilter(key, b, c? c.rows : rows); };
