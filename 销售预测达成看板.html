@@ -485,7 +485,8 @@ const state = { mode:null,            // 当前粒度 key
 /* 装载某个粒度：替换数据与单位文案，并重置与数据相关的筛选状态。
    两个粒度的周期数、维度取值、下钻项都不同，不重置会出现下标越界 / 下钻命中空集。
    列宽 state.colW 与自定义列 state.hideCols 与数据无关，保留。 */
-function hideColsSet(tblKey){ if(!state.hideCols[tblKey]) state.hideCols[tblKey]=new Set(); return state.hideCols[tblKey]; }
+function ctxKey(tblKey){ return `${state.mode}:${state.site}:${state.bizGroup}:${tblKey}`; }
+function hideColsSet(tblKey){ const k = ctxKey(tblKey); if(!state.hideCols[k]) state.hideCols[k]=new Set(); return state.hideCols[k]; }
 function loadMode(key){
   const modes = DB.modes || [];
   if(!modes.length) throw new Error('数据里没有 modes');
@@ -1247,8 +1248,8 @@ colpopEl.addEventListener('click', ev=>{
   const b=ev.target.closest('button'); if(!b) return;
   const h = hideColsSet(colTblKey);
   if('call' in b.dataset){ h.clear(); applyCols(); }
-  else if('cnone' in b.dataset){ state.hideCols[colTblKey]=new Set(COL_DEF.map(c=>c.k)); applyCols(); }
-  else if('cdef' in b.dataset){ state.hideCols[colTblKey]=new Set(); applyCols(); }
+  else if('cnone' in b.dataset){ const k=ctxKey(colTblKey); state.hideCols[k]=new Set(COL_DEF.map(c=>c.k)); applyCols(); }
+  else if('cdef' in b.dataset){ const k=ctxKey(colTblKey); state.hideCols[k]=new Set(); applyCols(); }
   else if('cdone' in b.dataset){ closeColPop(); }
 });
 colpopEl.addEventListener('input', ev=>{
