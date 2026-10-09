@@ -202,6 +202,8 @@ td.num b{color:var(--ink);font-weight:600}
 .empty{padding:28px;text-align:center;color:var(--muted);font-size:13px}
 /* ---------- 自定义列 ---------- */
 .block-tools{margin-left:auto;display:flex;align-items:center;gap:8px}
+.expbtn{cursor:pointer;background:#f0f4fa;border:1px solid #d0d8e0;border-radius:5px;padding:3px 10px;font-size:12px;color:#4a5568}
+.expbtn:hover{background:#dce6f4}
 table.wide[data-hide~="mRate"] [data-c="mRate"]{display:none}
 table.wide[data-hide~="m1Rate"] [data-c="m1Rate"]{display:none}
 table.wide[data-hide~="wRate"] [data-c="wRate"]{display:none}
@@ -669,8 +671,9 @@ function renderSite(){
   const cur = recsFor({});
   const tot = sumRecs(cur);
   const scopeTxt = `${periodLabel(state.pidx)}｜${state.site==='ALL'?'全部站点':D.sites[state.site].name}`;
-  document.getElementById('siteTools').innerHTML = colBtnHTML('_site');
+  document.getElementById('siteTools').innerHTML = exportBtnHTML('_site') + colBtnHTML('_site');
   document.querySelector('#siteTools [data-colopen]').onclick=(ev)=>{ ev.stopPropagation(); openColPop(ev.currentTarget, '_site'); };
+  document.querySelector('#siteTools [data-export]').onclick=(ev)=>{ ev.stopPropagation(); exportTableCSV('_site'); };
   document.getElementById('siteScope').textContent = scopeTxt;
 
   // 站点卡片：只在「全部站点」时展示。选中单个站点时它与上方 KPI 行内容重复，整块隐藏
@@ -1207,6 +1210,45 @@ const colBtnHTML = (tblKey)=>{
   return `<button class="colbtn${n?' on':''}" data-colopen="1" data-tblkey="${esc(tblKey)}" title="自定义要显示的指标列">自定义列${n?`<b>${COL_DEF.length-n}/${COL_DEF.length}</b>`:''}</button>`;
 };
 
+const exportBtnHTML = (tblKey)=> `<button class="expbtn" data-export="${esc(tblKey)}" title="导出为 CSV">⬇ 导出</button>`;
+
+function exportTableCSV(tblKey){
+  const table = document.querySelector(`table[data-tkey="${esc(tblKey)}"]`);
+  if(!table) return;
+  const hide = hideColsSet(tblKey);
+  const rows = [];
+  // 收集表头（th 列）
+  const headers = [];
+  table.querySelectorAll('thead th').forEach(th=>{
+    const t = th.textContent.replace(/[⇅▼▲]+/,'').trim();
+    if(t) headers.push(t);
+  });
+  rows.push(headers.map(h=>`"${h}"`).join(','));
+
+  // 收集数据行
+  table.querySelectorAll('tbody tr').forEach(tr=>{
+    const cells = [];
+    tr.querySelectorAll('td').forEach(td=>{
+      let v = td.textContent.trim();
+      // 名称列里的 "已下钻" 标记去掉
+      v = v.replace(/已下钻/g,'').trim();
+      cells.push(`"${v.replace(/"/g,'""')}"`);
+    });
+    if(cells.length) rows.push(cells.join(','));
+  });
+
+  const csv = '\uFEFF' + rows.join('\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const scope = `${state.mode}_${D.periods[state.pidx]?.iso||''}`;
+  const label = (tblKey==='_site'?'站点明细':DIM_LABEL[tblKey]||tblKey);
+  a.download = `${scope}_${label}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 function renderColPop(){
   const el=document.getElementById('colpop');
   if(!el) return;
@@ -1479,7 +1521,7 @@ function dimBlock(section, dimKey, blockNo){
       <div class="btitle"><span class="bnum">${blockNo}</span><h2>${DIM_LABEL[dimKey]}</h2>
         <span class="cnt">${base.length!==rowsAll.length? `${base.length} / ${rowsAll.length} 项` : `${rowsAll.length} 项`}</span>
         ${scoped?`<span class="scoped">已受上级下钻过滤</span>`:''}</div>
-      <div class="block-tools">${colBtnHTML(dimKey)}</div>
+      <div class="block-tools">${exportBtnHTML(dimKey)}${colBtnHTML(dimKey)}</div>
     </div>
     <div class="block-body">
       ${rowsAll.length? compBar(shown, base, DIM_LABEL[dimKey]) : ''}
@@ -1505,6 +1547,8 @@ function dimBlock(section, dimKey, blockNo){
       renderAll();
     };
   });
+  const ebtn=section.querySelector('[data-export]');
+  if(ebtn) ebtn.onclick=(ev)=>{ ev.stopPropagation(); exportTableCSV(dimKey); };
   const cbtn=section.querySelector('[data-colopen]');
   if(cbtn) cbtn.onclick=(ev)=>{ ev.stopPropagation(); openColPop(cbtn, dimKey); };
   section.querySelectorAll('button[data-fopen]').forEach(b=>{
