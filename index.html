@@ -1217,9 +1217,10 @@ function exportTableCSV(tblKey){
   if(!table) return;
   const hide = hideColsSet(tblKey);
   const rows = [];
-  // 收集表头（th 列）
+  // 收集表头（跳过带 colspan 的分组标题行，仅取实际列头）
   const headers = [];
   table.querySelectorAll('thead th').forEach(th=>{
+    if(th.hasAttribute('colspan')) return;   // 跳过 "订单达成率" 等分组标题
     const t = th.textContent.replace(/[⇅▼▲]+/,'').trim();
     if(t) headers.push(t);
   });
