@@ -1294,6 +1294,12 @@ function openColPop(anchor, tblKey){
 
 function closeColPop(){ const el=document.getElementById('colpop'); if(el) el.hidden=true; colQ=''; colTblKey=''; }
 
+function colSyncCount(){
+  const n = colpopEl.querySelectorAll('input[data-ck]:checked').length;
+  const em = colpopEl.querySelector('.cph em');
+  if(em) em.textContent = `已选 ${n} / ${COL_DEF.length}`;
+}
+
 function applyCols(){
   const list = colpopEl.querySelector('.cplist');
   const scrollTop = list ? list.scrollTop : 0;
@@ -1307,10 +1313,17 @@ const colpopEl=document.getElementById('colpop');
 colpopEl.addEventListener('click', ev=>{
   const b=ev.target.closest('button'); if(!b) return;
   const h = hideColsSet(colTblKey);
-  if('call' in b.dataset){ h.clear(); applyCols(); }
-  else if('cnone' in b.dataset){ const k=ctxKey(colTblKey); state.hideCols[k]=new Set(COL_DEF.map(c=>c.k)); applyCols(); }
-  else if('cdef' in b.dataset){ const k=ctxKey(colTblKey); state.hideCols[k]=new Set(); applyCols(); }
-  else if('cdone' in b.dataset){ closeColPop(); }
+  const cbs = [...colpopEl.querySelectorAll('input[data-ck]')];
+  if('call' in b.dataset){ cbs.forEach(cb=>cb.checked=true); colSyncCount(); }
+  else if('cnone' in b.dataset){ cbs.forEach(cb=>cb.checked=false); colSyncCount(); }
+  else if('cdef' in b.dataset){ cbs.forEach(cb=>cb.checked=true); colSyncCount(); }
+  else if('cdone' in b.dataset){
+    const k=ctxKey(colTblKey);
+    const newHide=new Set();
+    cbs.forEach(cb=>{ if(!cb.checked) newHide.add(cb.dataset.ck); });
+    if(newHide.size) state.hideCols[k]=newHide; else delete state.hideCols[k];
+    closeColPop(); renderAll();
+  }
 });
 colpopEl.addEventListener('input', ev=>{
   const s=ev.target.closest('input.csearch'); if(!s) return;
@@ -1332,9 +1345,7 @@ colpopEl.addEventListener('input', ev=>{
 });
 colpopEl.addEventListener('change', ev=>{
   const cb=ev.target.closest('input[data-ck]'); if(!cb) return;
-  const h = hideColsSet(colTblKey);
-  if(cb.checked) h.delete(cb.dataset.ck); else h.add(cb.dataset.ck);
-  applyCols();
+  colSyncCount();
 });
 document.addEventListener('click', ev=>{
   const el=document.getElementById('colpop');
