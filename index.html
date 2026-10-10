@@ -1112,29 +1112,39 @@ function fCheckAll(flag){
   fSyncCount();
 }
 
-function applyFilter(){
+function applyFilterLive(keepOpen){
   const main=fpop.main, isAux=!!fpop.aux;
   const hide=new Set(fpop.all.filter(n=>!fpop.sel.has(n)));
   const bag = isAux? state.hideAux : state.hide;
-  const slot = isAux? fpop.key : main;      // 附属列按「维度@列名」分别存，多列互不干扰
+  const slot = isAux? fpop.key : main;
   if(hide.size) bag[slot]=hide; else delete bag[slot];
-  closeFilter(); renderDim(blockOf(main));
+  const list = document.querySelector('#fpop .flist');
+  const scrollTop = list ? list.scrollTop : 0;
+  renderDim(blockOf(main));
+  if(!keepOpen){ closeFilter(); return; }
+  // 重渲染后重建弹窗内容（原地保留，不做重新定位——anchor 可能已被替换）
+  renderFPop();
+  const newList = document.querySelector('#fpop .flist');
+  if(newList) newList.scrollTop = scrollTop;
 }
 
-function closeFilter(){ const el=document.getElementById('fpop'); if(el) el.hidden=true; }   // 目标信息保留到下次打开前，避免关闭后误用
+function applyFilter(){ applyFilterLive(false); }
+
+function closeFilter(){ const el=document.getElementById('fpop'); if(el) el.hidden=true; }
 
 const fpopEl=document.getElementById('fpop');
 fpopEl.addEventListener('click', ev=>{
   const b=ev.target.closest('button'); if(!b) return;
-  if('fall' in b.dataset) fCheckAll(true);
-  else if('fnone' in b.dataset) fCheckAll(false);
-  else if('freset' in b.dataset) fCheckAll(true);
+  if('fall' in b.dataset){ fCheckAll(true); applyFilterLive(true); }
+  else if('fnone' in b.dataset){ fCheckAll(false); applyFilterLive(true); }
+  else if('freset' in b.dataset){ fCheckAll(true); applyFilterLive(true); }
   else if('fapply' in b.dataset) applyFilter();
 });
 fpopEl.addEventListener('change', ev=>{
   const cb=ev.target.closest('input[data-fv]'); if(!cb) return;
   if(cb.checked) fpop.sel.add(cb.dataset.fv); else fpop.sel.delete(cb.dataset.fv);
   fSyncCount();
+  applyFilterLive(true);
 });
 fpopEl.addEventListener('input', ev=>{
   const s=ev.target.closest('input.fsearch'); if(!s) return;
