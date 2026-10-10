@@ -1284,7 +1284,14 @@ function openColPop(anchor, tblKey){
 
 function closeColPop(){ const el=document.getElementById('colpop'); if(el) el.hidden=true; colQ=''; colTblKey=''; }
 
-function applyCols(){ renderAll(); renderColPop(); }
+function applyCols(){
+  const list = colpopEl.querySelector('.cplist');
+  const scrollTop = list ? list.scrollTop : 0;
+  renderAll();
+  renderColPop();
+  const newList = colpopEl.querySelector('.cplist');
+  if(newList) newList.scrollTop = scrollTop;
+}
 
 const colpopEl=document.getElementById('colpop');
 colpopEl.addEventListener('click', ev=>{
