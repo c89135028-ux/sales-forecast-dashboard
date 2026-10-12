@@ -24,7 +24,8 @@ import pandas as pd
 SRCS = [
     r'D:/Thinkpad/下载/日明细数据 (20).xlsx',   # 2026-07 / 08（其 9 月只到 9/19，会被下面的源覆盖）
     r'D:/Thinkpad/下载/日明细数据 (25).xlsx',   # 完整 2026-09（9.1-9.30）
-    r'D:/Thinkpad/下载/日明细数据 (28).xlsx',   # 2026-10（紧邻延伸，滚动追加）
+    r'D:/Thinkpad/下载/日明细数据 (28).xlsx',   # 2026-10（被后面的 (32) 覆盖）
+    r'D:/Thinkpad/下载/日明细数据 (32).xlsx',   # 完整 2026-10（替换 (28) 的 10 月）
 ]
 # listing 对应表：列 = 国家 / 最早SKU / 最新国家Listing，用于回填源表中空白的 listing
 LISTING_MAP = r'E:/不重要文件/国家listing对应表.xlsx'
@@ -61,7 +62,7 @@ def r2(x):
 
 def read_source(path):
     """读一个源表：剔除末行「合计」，把时间列规范成 'YYYY-MM'。"""
-    d = pd.read_excel(path, sheet_name='日明细数据')
+    d = pd.read_excel(path, sheet_name=0)
     d = d[d[TIME_COL].astype(str) != '合计'].copy()
     d[TIME_COL] = pd.to_datetime(d[TIME_COL]).dt.strftime('%Y-%m')
     return d

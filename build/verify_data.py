@@ -66,7 +66,7 @@ def parse_sources(build_file, multi):
 
 
 def read_source(path, tcol):
-    d = pd.read_excel(path, sheet_name='日明细数据')
+    d = pd.read_excel(path, sheet_name=0)
     raw_n = len(d)
     d = d[d[tcol].astype(str) != '合计'].copy()
     d[tcol] = pd.to_datetime(d[tcol]).dt.strftime('%Y-%m' if tcol == '年月' else '%Y-%m-%d')

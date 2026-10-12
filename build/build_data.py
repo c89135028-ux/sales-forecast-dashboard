@@ -25,7 +25,8 @@ import pandas as pd
 # 滚动合并：按顺序读入并拼接，同一个「周首日」以靠后的源为准（新数据往后追加，不替换旧的）
 SRCS = [
     r'D:/Thinkpad/下载/日明细数据 (21).xlsx',   # 历史 4 周：08-23 / 08-30 / 09-06 / 09-13
-    r'D:/Thinkpad/下载/日明细数据 (24).xlsx',   # 最新 2 周：09-20 / 09-27
+    r'D:/Thinkpad/下载/日明细数据 (24).xlsx',   # 2 周：09-20 / 09-27
+    r'D:/Thinkpad/下载/日明细数据 (33).xlsx',   # 1 周：10-04（16列，缺「产品组」，由 ATTR_SRC 回填）
 ]
 TIME_COL = '周首日'
 # 兜底：仅当源表缺「业务组 / 产品组 / 业务负责人」列时才启用，按 最早SKU 从上一期明细回填
@@ -64,7 +65,7 @@ def r2(x):
 
 def read_source(path):
     """读一个源表：剔除末行「合计」，把周首日规范成 'YYYY-MM-DD'。"""
-    d = pd.read_excel(path, sheet_name='日明细数据')
+    d = pd.read_excel(path, sheet_name=0)
     d = d[d[TIME_COL].astype(str) != '合计'].copy()
     d[TIME_COL] = pd.to_datetime(d[TIME_COL]).dt.strftime('%Y-%m-%d')
     return d
@@ -100,21 +101,24 @@ def main():
             df[c] = df[c].astype(str).str.strip()
 
     # —— 补全源表缺失的维度列：按 最早SKU 从上期明细回填；实在没有的归「（未标注）」 ——
-    _miss = [c for c in ATTR_COLS if c not in df.columns]
-    if _miss:
+    # 检查方式：(a) 列完全不存在；(b) 列存在但有 NaN（新源缺该列但旧源有，concat 后值为 NaN）
+    _miss_cols = [c for c in ATTR_COLS if c not in df.columns]
+    _nan_cols  = [c for c in ATTR_COLS if c in df.columns and df[c].isna().any()]
+    if _miss_cols or _nan_cols:
         if not os.path.exists(ATTR_SRC):
-            raise SystemExit(f'源表缺少 {_miss}，且找不到属性来源表：{ATTR_SRC}')
-        attr = pd.read_excel(ATTR_SRC, sheet_name='日明细数据')
+            raise SystemExit(f'源表缺少 {_miss_cols or _nan_cols}，且找不到属性来源表：{ATTR_SRC}')
+        attr = pd.read_excel(ATTR_SRC, sheet_name=0)
         attr = attr[attr['周首日'].astype(str) != '合计'].copy()
         attr['最早SKU'] = attr['最早SKU'].astype(str).str.strip()
         attr = attr.drop_duplicates('最早SKU')
-        for c in _miss:
+        for c in (_miss_cols + _nan_cols):
             mp = dict(zip(attr['最早SKU'], attr[c]))
-            df[c] = df['最早SKU'].map(mp)
-            got = int(df[c].notna().sum())
+            # 只填 NaN 值，已有的值保留
+            nan_mask = df[c].isna()
+            df.loc[nan_mask, c] = df.loc[nan_mask, '最早SKU'].map(mp)
+            got = int(nan_mask.sum() - df[c].isna().sum())
             df[c] = df[c].fillna('（未标注）').astype(str).str.strip()
-            tail = '' if got == len(df) else f'，{len(df)-got} 行归「（未标注）」'
-            print(f'维度补全：{c} ← 按 最早SKU 回填 {got}/{len(df)} 行{tail}')
+            print(f'维度补全：{c} ← 按 最早SKU 回填 NaN 行 {got}/{nan_mask.sum()} 行')
 
     # 源表可能整列不含 listing（(19) 起），此时整列交给对应表回填
     if '国家Listing' not in df.columns:
