@@ -998,7 +998,9 @@ function bindSorts(scope){
         const k=th.dataset.sort, cur=state.sort[key]||DEF_SORT;
         state.sort[key] = (cur.k===k) ? {k:k, dir:(cur.dir===1? -1 : 1)} : {k:k, dir:-1};
         const sec=tb.closest('section[data-dim]');
+        const sy = window.scrollY || window.pageYOffset || 0;
         if(sec) renderDim(sec); else renderSite();
+        requestAnimationFrame(()=>window.scrollTo(0, sy));
       };
     });
   });
