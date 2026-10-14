@@ -164,7 +164,13 @@ def main():
     f1 = df['销售预测(加权)']
     sku_rate = np.where(f1 > 0, df['订单销量'] / f1, np.nan)
     df['f1q'] = np.where((sku_rate >= 0.7) & (sku_rate <= 1.3), f1, 0.0)
-    print('70-130% SKU 行数:', int(((sku_rate >= 0.7) & (sku_rate <= 1.3)).sum()), '/', len(df))
+    print('加权70-130% SKU 行数:', int(((sku_rate >= 0.7) & (sku_rate <= 1.3)).sum()), '/', len(df))
+
+    # 最新版 70%-130% 的预测量：该 SKU M版达成率 = 订单销量 / 销售预测(最新版)，落在 [70%,130%] 的 SKU 计入其预测(最新版)
+    f4 = df['销售预测(最新版)']
+    m_rate = np.where(f4 > 0, df['订单销量'] / f4, np.nan)
+    df['f4q'] = np.where((m_rate >= 0.7) & (m_rate <= 1.3), f4, 0.0)
+    print('最新版70-130% SKU 行数:', int(((m_rate >= 0.7) & (m_rate <= 1.3)).sum()), '/', len(df))
 
     key = [TIME_COL, '预测站点'] + dims_order + dims_extra
 
@@ -193,6 +199,7 @@ def main():
             int(sub['最早SKU'].nunique()),
             int(len(sub)),
             r2(sub['f1q'].sum()),
+            r2(sub['f4q'].sum()),
             d_idx['国家Listing'][l_],
             d_idx['SKU'][k_],
         ])

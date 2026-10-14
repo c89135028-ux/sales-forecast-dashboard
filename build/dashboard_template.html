@@ -218,7 +218,8 @@ table.wide[data-hide~="mGap"] [data-c="mGap"]{display:none}
 table.wide[data-hide~="mOosGap"] [data-c="mOosGap"]{display:none}
 table.wide[data-hide~="wOosGap"] [data-c="wOosGap"]{display:none}
 table.wide[data-hide~="f1q"] [data-c="f1q"]{display:none}
-table.wide[data-hide~="bandShare"] [data-c="bandShare"]{display:none}
+table.wide[data-hide~="f4q"] [data-c="f4q"]{display:none}
+table.wide[data-hide~="bandShare4"] [data-c="bandShare4"]{display:none}
 .colbtn{display:inline-flex;align-items:center;gap:6px;font-family:inherit;font-size:12px;color:var(--ink2);
   background:#fff;border:1px solid var(--line);border-radius:8px;padding:5px 11px;cursor:pointer;transition:.15s}
 .colbtn:hover{border-color:#b9c8e2;color:var(--accent)}
@@ -466,7 +467,7 @@ footer .fh{font-size:13px;font-weight:700;color:var(--ink2);margin-bottom:4px}
 const DB = __DATA__;
 const DIM_KEYS = ['业务组','BU','产品组','业务负责人','三级分类','国家Listing','SKU'];
 const DIM_LABEL = {'业务组':'业务组','BU':'BU','产品组':'产品组','三级分类':'三级分类','业务负责人':'负责人','国家Listing':'国家Listing','SKU':'SKU'};
-const FLD = ['w','s','g','b','p','c','o','a','f1','f2','f3','f4','f5','ids','n0','rn','f1q','l','k'];
+const FLD = ['w','s','g','b','p','c','o','a','f1','f2','f3','f4','f5','ids','n0','rn','f1q','f4q','l','k'];
 const DIDX = {'业务组':'g','BU':'b','产品组':'p','三级分类':'c','业务负责人':'o','国家Listing':'l','SKU':'k'};
 const SITE_FLAG = {'Amazon.com.mx.new':{t:'MX',c:'#2f8f4e'},'Amazon.com.br.new':{t:'BR',c:'#1f7a4d'}};
 const DEF_TOP = {'业务组':20,'BU':20,'产品组':20,'三级分类':15,'业务负责人':20,'国家Listing':15,'SKU':15};
@@ -558,9 +559,9 @@ function recsFor(opts){
   return out;
 }
 function sumRecs(list){
-  const t={a:0,f1:0,f2:0,f3:0,f4:0,f5:0,f1q:0,rows:0,sk:new Set()};
+  const t={a:0,f1:0,f2:0,f3:0,f4:0,f5:0,f1q:0,f4q:0,rows:0,sk:new Set()};
   for(const r of list){
-    t.a+=r.a; t.f1+=r.f1; t.f2+=r.f2; t.f3+=r.f3; t.f4+=r.f4; t.f5+=r.f5; t.f1q+=r.f1q; t.rows+=r.rn;
+    t.a+=r.a; t.f1+=r.f1; t.f2+=r.f2; t.f3+=r.f3; t.f4+=r.f4; t.f5+=r.f5; t.f1q+=r.f1q; t.f4q+=r.f4q; t.rows+=r.rn;
     for(const id of r.ids) t.sk.add(id);
   }
   return t;
@@ -585,8 +586,8 @@ function groupByDim(list, dimKey){
   const k=DIDX[dimKey], m=new Map();
   for(const r of list){
     const id=r[k]; let o=m.get(id);
-    if(!o){ o={id:id, name:D.dims[dimKey][id], a:0,f1:0,f2:0,f3:0,f4:0,f5:0,f1q:0,rows:0,sk:new Set()}; m.set(id,o); }
-    o.a+=r.a; o.f1+=r.f1; o.f2+=r.f2; o.f3+=r.f3; o.f4+=r.f4; o.f5+=r.f5; o.f1q+=r.f1q; o.rows+=r.rn;
+    if(!o){ o={id:id, name:D.dims[dimKey][id], a:0,f1:0,f2:0,f3:0,f4:0,f5:0,f1q:0,f4q:0,rows:0,sk:new Set()}; m.set(id,o); }
+    o.a+=r.a; o.f1+=r.f1; o.f2+=r.f2; o.f3+=r.f3; o.f4+=r.f4; o.f5+=r.f5; o.f1q+=r.f1q; o.f4q+=r.f4q; o.rows+=r.rn;
     for(const sid of r.ids) o.sk.add(sid);
   }
   for(const o of m.values()) o.n=o.sk.size;
@@ -607,9 +608,12 @@ const MET = {
 /* 加权版 70%-130% 预测量占比：分子 = 该项 70%-130% 预测量，分母 = **该项自身**的销售预测(加权)
    分母随行变化：站点行除以该站点、业务组行除以该业务组、三级分类行除以该三级分类 */
 function bandShare(o){ return bandSelf(o); }
+function bandShare4(o){ return bandSelf4(o); }
 /* 占当前筛选整体的份额，仅用于 tooltip 参考 */
 function bandOverall(o, baseF1){ return (baseF1>0)? o.f1q/baseF1 : null; }
+function bandOverall4(o, baseF4){ return (baseF4>0)? o.f4q/baseF4 : null; }
 function bandSelf(o){ return (o.f1>0)? o.f1q/o.f1 : null; }
+function bandSelf4(o){ return (o.f4>0)? o.f4q/o.f4 : null; }
 function tcolor(r){ if(r==null) return 'var(--muted)'; if(r>=1) return 'var(--up)'; if(r>=0.9) return 'var(--warn)'; return 'var(--down)'; }
 
 /* ---------- filters UI ---------- */
@@ -1050,10 +1054,10 @@ function renderTrendPop(){
 /* 固定列宽 —— 表头文字是用户给定的原文，不要改动文字；放不下就加宽对应列。
    实测每个表头「文字 + 排序箭头 + 左右 padding」的占宽：
    mRate 78 / m1Rate 89 / wRate 78 / mOosRate 129 / wOosRate 129 /
-   f4 129 / f3 120 / f1 119 / a 78 / f5 175 / mGap 119 / mOosGap 119 / wOosGap 119 / f1q 165 / bandShare 88
+   f4 129 / f3 120 / f1 119 / a 78 / f5 175 / mGap 119 / mOosGap 119 / wOosGap 119 / f1q 165 / bandShare 88 / f4q 172 / bandShare4 132
    下面各列均 ≥ 实测值并留有余量；同组内取相同宽度保持整齐（f5 文案最长，单独给 178）。
    ⚠️ 以后改表头文字，必须重新量一遍并同步这里。 */
-const COLW = [38, 150, 132,132,132,132,132, 140,140,140,140,178, 122,122,122, 168,132];
+const COLW = [38, 150, 132,132,132,132,132, 140,140,140,140,178, 122,122,122, 168,132, 172,132];
 
 /* ---------- 表头筛选：勾选要显示的维度项 ---------- */
 const FUNNEL='<svg viewBox="0 0 12 12" width="9" height="9" aria-hidden="true"><path d="M.9 1.7h10.2L7.1 6.4v3.8L4.9 9.2V6.4z" fill="currentColor"/></svg>';
@@ -1196,6 +1200,7 @@ const COL_GROUPS = [
   {name:'预测与销量（件）', cls:'th-val'},
   {name:'缺口（预测 − 实际）', cls:'th-gap'},
   {name:'加权版 70%-130%', cls:'th-band'},
+  {name:'最新版 70%-130%', cls:'th-band'},
 ];
 /* v(o) = 该列的排序取值，表头点击排序直接用它。
    t = 表头文字（用户给定的原文，不要改动）；只允许通过调整列宽来保证排版 */
@@ -1215,6 +1220,8 @@ const COL_DEF = [
   {k:'wOosGap',  g:2, t:'加权断货清洗缺口',    th:'th-gap num', v:o=>MET.wOosGap(o)},
   {k:'f1q',      g:3, t:'加权版70%-130%的预测量', th:'th-band num', v:o=>o.f1q},
   {k:'bandShare',g:3, t:'预测量占比',          th:'th-band', v:o=>bandSelf(o)},
+  {k:'f4q',      g:4, t:'最新版70%-130%的预测量', th:'th-band num', v:o=>o.f4q},
+  {k:'bandShare4',g:4, t:'最新版预测量占比',    th:'th-band', v:o=>bandSelf4(o)},
 ];
 const colBtnHTML = (tblKey)=>{
   const h = hideColsSet(tblKey);
@@ -1485,8 +1492,11 @@ function rowHTML(r, i, colLabel, curTot, on, twoCol, auxList, clkRate){
     return `<td class="num" data-c="${k}"><span class="gapv ${v>0?'gapup':(v<0?'gapdown':'gapzero')}" title="${esc(tip+'\n'+dir)}">${fmtGap(v)}</span></td>`;
   };
   const bs = bandShare(r);
+  const bs4 = bandShare4(r);
   const bandTip = `70%-130% 预测量 ${fmtN(r.f1q,1)} 件 ÷ 该项销售预测(加权) ${fmtN(r.f1,1)} 件 = ${fmtPct(bs)}\n（参考：占当前筛选整体加权预测 ${fmtN(curTot.f1,1)} 件的 ${fmtPct(bandOverall(r, curTot.f1))}）`;
   const bw = bs==null? 0 : Math.min(bs,1)*100;
+  const bandTip4 = `最新版 70%-130% 预测量 ${fmtN(r.f4q,1)} 件 ÷ 该项销售预测(最新版) ${fmtN(r.f4,1)} 件 = ${fmtPct(bs4)}\n（参考：占当前筛选整体最新版预测 ${fmtN(curTot.f4,1)} 件的 ${fmtPct(bandOverall4(r, curTot.f4))}）`;
+  const bw4 = bs4==null? 0 : Math.min(bs4,1)*100;
   return `<tr class="${on?'on':''}" data-name="${esc(r.name)}"${r.sid!=null?` data-sid="${r.sid}"`:''}>
     <td class="rank stk c-rank">${i+1}</td>
     ${auxList? auxList.map((aux,j)=>{
@@ -1514,6 +1524,8 @@ function rowHTML(r, i, colLabel, curTot, on, twoCol, auxList, clkRate){
     ${gapCell(MET.wOosGap(r), `销售预测(加权) ${fmtN(r.f1,1)} − 断货清洗 ${fmtN(r.f2,1)}`, 'wOosGap')}
     <td class="num" data-c="f1q">${fmtN(r.f1q,1)}</td>
     <td data-c="bandShare"><div class="share"><div class="track"><div class="fill" style="width:${bw.toFixed(1)}%"></div></div><span class="txt" title="${esc(bandTip)}">${fmtPct(bs)}</span></div></td>
+    <td class="num" data-c="f4q">${fmtN(r.f4q,1)}</td>
+    <td data-c="bandShare4"><div class="share"><div class="track"><div class="fill" style="width:${bw4.toFixed(1)}%"></div></div><span class="txt" title="${esc(bandTip4)}">${fmtPct(bs4)}</span></div></td>
   </tr>`;
 }
 
@@ -1556,7 +1568,7 @@ function dimBlock(section, dimKey, blockNo){
     </div>
     <div class="block-body">
       ${rowsAll.length? compBar(shown, base, DIM_LABEL[dimKey]) : ''}
-      ${rowsAll.length? wideTable(shown, DIM_LABEL[dimKey], curTot, state.drill[dimKey], dimKey, fstat, dimKey==='国家Listing'?COLW_LST:(dimKey==='SKU'?COLW_SKU:(dimKey==='产品组'?COLW_PG:null)), dimKey==='SKU', auxCols.length? auxCols : null, dimKey, dimKey==='SKU'?new Set(['f1q','bandShare']):null) : '<div class="empty">当前筛选条件下暂无数据</div>'}
+      ${rowsAll.length? wideTable(shown, DIM_LABEL[dimKey], curTot, state.drill[dimKey], dimKey, fstat, dimKey==='国家Listing'?COLW_LST:(dimKey==='SKU'?COLW_SKU:(dimKey==='产品组'?COLW_PG:null)), dimKey==='SKU', auxCols.length? auxCols : null, dimKey, dimKey==='SKU'?new Set(['f1q','bandShare','f4q','bandShare4']):null) : '<div class="empty">当前筛选条件下暂无数据</div>'}
       ${base.length>shown.length?`<div class="more"><button data-more="${dimKey}">展开剩余 ${base.length-shown.length} 项 ▾</button></div>`:''}
       ${(topN>1e5&&base.length>(DEF_TOP[dimKey]||12))?`<div class="more"><button data-collapse="${dimKey}">收起（只看前 ${DEF_TOP[dimKey]||12} 项）▴</button></div>`:''}
     </div>

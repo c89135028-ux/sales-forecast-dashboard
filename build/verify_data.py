@@ -41,7 +41,7 @@ MET = {
     '销售预测(最新版)': (11, '销售预测(最新版)'),
     '断货清洗-销售预测(最新版)': (12, '断货清洗-销售预测(最新版)'),
 }
-DIMS = {'业务组': 2, 'BU': 3, '产品组': 4, '三级分类': 5, '业务负责人': 6, '国家Listing': 17, 'SKU': 18}
+DIMS = {'业务组': 2, 'BU': 3, '产品组': 4, '三级分类': 5, '业务负责人': 6, '国家Listing': 18, 'SKU': 19}
 
 MODES = {
     'week': dict(label='周报', build='build_data.py', json='data.json',
@@ -155,7 +155,7 @@ def check_mode(key):
         fails.append(f'明细行数不一致 {len(recs)} != {len(df)}')
     lst = df['国家Listing']
     blank = int((lst.isna() | lst.astype(str).str.strip().isin(NAN_WORDS)).sum())
-    unmarked = sum(1 for r in recs if d['dims']['国家Listing'][r[17]] == '（未标注）')
+    unmarked = sum(1 for r in recs if d['dims']['国家Listing'][r[18]] == '（未标注）')
     print(f'  明细行数 {"OK" if len(recs) == len(df) else "FAIL"}（json {len(recs)} = 源表 {len(df)}）')
     print(f'  源表 listing 空 {blank} 行 → json「（未标注）」{unmarked} 行（应 ≤ 空行数）')
     if unmarked > blank:
