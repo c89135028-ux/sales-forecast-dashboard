@@ -30,7 +30,7 @@ SRCS = [
 ]
 TIME_COL = '周首日'
 # 兜底：仅当源表缺「业务组 / 产品组 / 业务负责人」列时才启用，按 最早SKU 从上一期明细回填
-ATTR_SRC = r'D:/Thinkpad/下载/日明细数据 (21).xlsx'
+ATTR_SRC = r'D:/Thinkpad/下载/日明细数据 (24).xlsx'   # (33) 缺产品组时用最近的含列周表回填
 ATTR_COLS = ['业务组', '产品组', '业务负责人']
 # listing 对应表：列 = 国家 / 最早SKU / 最新国家Listing，用于回填源表中空白的 listing
 LISTING_MAP = r'E:/不重要文件/国家listing对应表.xlsx'
