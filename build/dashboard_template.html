@@ -415,6 +415,7 @@ footer .fh{font-size:13px;font-weight:700;color:var(--ink2);margin-bottom:4px}
       <div class="fgroup"><label>粒度</label><div class="chips" id="modeChips"></div></div>
       <div class="fgroup"><label id="periodLab">周</label><select id="periodSel" title="选择数据周期"></select></div>
       <div class="fgroup"><label>站点</label><div class="chips" id="siteChips"></div></div>
+      <div class="fgroup" id="elimGroup" style="display:none"><label>淘汰状态</label><div class="chips" id="elimChips"></div></div>
       <div class="fgroup"><label>业务组</label><div class="chips" id="bizChips"></div></div>
     </div>
     <div class="drillbar" id="drillBar"></div>
@@ -483,9 +484,10 @@ let U = '周';          // 周期单位（「周」/「月」），所有文案�
 let UNAME = '周报';    // logo 角标
 let TWIN = 4;          // 趋势图默认展示最近几个周期
 const state = { mode:null,            // 当前粒度 key
-                pidx: 0, site:'ALL', bizGroup:'ALL', drill:{}, sort:{}, top:{}, hide:{}, hideCols:{}, trendIdx:'mRate',
-                hideAux:{},   // 附属列（国家Listing 表的三级分类）局部筛选：dimKey -> 排除集合
+                pidx: 0, site:'ALL', bizGroup:'ALL', elim:'ALL', drill:{}, sort:{}, top:{}, hide:{}, hideCols:{}, trendIdx:'mRate',
+                hideAux:{},   // 附属列（国家Listing 表的三级分类）局部筛选：dimKey → 排除集合
                 colW:{} };    // 自定义列宽：tableKey -> 宽度数组（拖动表头边界调整）
+let ELIM_SET = new Set(); // 命中巴西淘汰清单的 SKU 维度下标（loadMode 时计算）
 
 /* 装载某个粒度：替换数据与单位文案，并重置与数据相关的筛选状态。
    两个粒度的周期数、维度取值、下钻项都不同，不重置会出现下标越界 / 下钻命中空集。
@@ -502,8 +504,20 @@ function loadMode(key){
   DEOF = {}; DIM_KEYS.forEach(k=>{ DEOF[k] = new Map((D.dims[k]||[]).map((v,i)=>[v,i])); });
   REC = D.recs.map(arr=>{ const o={}; FLD.forEach((k,i)=>o[k]=arr[i]); return o; });
   NREC = REC.length;
+  /* 预计算：SKU 维度下标 → 是否入选巴西淘汰清单（靠最早SKU 判定）。
+     淘汰清单只影响巴西站，天然跟站点绑定 —— 用 BRSITE_idx 来判 */
+  let brSiteIdx = -1; for(let i=0;i<D.sites.length;i++){ if(D.sites[i].code==='Amazon.com.br.new') brSiteIdx=i; }
+  ELIM_SET.clear();  // 命中淘汰清单的 SKU 维度下标
+  if(brSiteIdx>=0 && (DB.elimSkus||[]).length){
+    const skus = D.dims['SKU']||[];
+    const elimLookup = new Set((DB.elimSkus||[]).map(String));
+    for(let i=0;i<skus.length;i++){
+      const earliest = skus[i].split('|')[0];
+      if(elimLookup.has(earliest)) ELIM_SET.add(i);
+    }
+  }
   state.pidx = D.periods.length-1;
-  state.site = 'ALL'; state.bizGroup = 'ALL'; state.drill = {}; state.hide = {}; state.hideAux = {}; state.top = {}; state.trendIdx = state.trendIdx || 'mRate';
+  state.site = 'ALL'; state.bizGroup = 'ALL'; state.elim = 'ALL'; state.drill = {}; state.hide = {}; state.hideAux = {}; state.top = {}; state.trendIdx = state.trendIdx || 'mRate';
   state.sort = {}; DIM_KEYS.forEach(k=>{ state.sort[k] = {k:'a', dir:-1}; });   // 默认各表都按订单销量从高到低
   state.sort['_site'] = {k:'a', dir:-1};
   document.title = `拉美销售预测达成看板`;
@@ -556,6 +570,11 @@ function recsFor(opts){
     if(usePeriod && r.w!==pIdx) continue;
     if(state.bizGroup!=='ALL' && r.g!==state.bizGroup) continue;
     if(!matchDrill(r)) continue;
+    /* 巴西站淘汰筛选：只影响 SKU 维度（k=rec 中的 SKU 下标），不相当于下钻 */
+    if(state.elim!=='ALL'){
+      const keep = state.elim==='elim' ? ELIM_SET.has(r.k) : !ELIM_SET.has(r.k);
+      if(!keep) continue;
+    }
     out.push(r);
   }
   return out;
@@ -648,6 +667,23 @@ function renderFilters(){
   sc.querySelectorAll('.chip').forEach(el=>el.onclick=()=>{
     const v=el.dataset.site; state.site = v==='ALL'? 'ALL' : +v; renderAll();
   });
+
+  /* 巴西站淘汰筛选：只有切到巴西站时才显示淘汰/正常/全量三个按钮 */
+  const eg = document.getElementById('elimGroup');
+  const ec = document.getElementById('elimChips');
+  const isBR = state.site!=='ALL' && D.sites[state.site] && D.sites[state.site].code==='Amazon.com.br.new';
+  if(isBR && (DB.elimSkus||[]).length){
+    eg.style.display = '';
+    ec.innerHTML = `<div class="chip ${state.elim==='ALL'?'on':''}" data-elim="ALL">全量</div>
+      <div class="chip ${state.elim==='ok'?'on':''}" data-elim="ok">正常</div>
+      <div class="chip ${state.elim==='elim'?'on':''}" data-elim="elim">淘汰</div>`;
+    ec.querySelectorAll('.chip').forEach(el=>el.onclick=()=>{
+      state.elim = el.dataset.elim; renderAll();
+    });
+  } else {
+    eg.style.display = 'none';
+    if(state.elim!=='ALL') state.elim='ALL';
+  }
 
   const bc=document.getElementById('bizChips');
   const bizKeys = D.dims['业务组'] ? Object.keys(D.dims['业务组']) : [];
