@@ -1324,7 +1324,7 @@ function renderColPop(){
   el.innerHTML = `<div class="cph"><b>自定义列</b><em>已选 ${n} / ${COL_DEF.length}</em></div>`
     + `<input class="csearch" type="search" placeholder="搜索列…" value="${esc(colQ)}">`
     + `<div class="cplist">${list}</div>`
-    + `<div class="cpf"><button data-call>全选</button><button data-cnone>清空</button><button data-cdef>默认</button><button class="pri" data-cdone>完成</button></div>`;
+    + `<div class="cpf"><button data-call>全选</button><button data-cnone>清空</button><button data-cdef>默认</button><button data-cglobal title="将当前表的列配置复制到所有板块">应用到全局</button><button class="pri" data-cdone>完成</button></div>`;
 }
 
 let colQ='';
@@ -1364,6 +1364,15 @@ colpopEl.addEventListener('click', ev=>{
   if('call' in b.dataset){ cbs.forEach(cb=>cb.checked=true); colSyncCount(); }
   else if('cnone' in b.dataset){ cbs.forEach(cb=>cb.checked=false); colSyncCount(); }
   else if('cdef' in b.dataset){ cbs.forEach(cb=>cb.checked=true); colSyncCount(); }
+  else if('cglobal' in b.dataset){
+    const newHide=new Set();
+    cbs.forEach(cb=>{ if(!cb.checked) newHide.add(cb.dataset.ck); });
+    ['_site',...DIM_KEYS].forEach(tk=>{
+      const k=ctxKey(tk);
+      if(newHide.size) state.hideCols[k]=new Set(newHide); else delete state.hideCols[k];
+    });
+    closeColPop(); renderAll();
+  }
   else if('cdone' in b.dataset){
     const k=ctxKey(colTblKey);
     const newHide=new Set();
