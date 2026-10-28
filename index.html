@@ -885,6 +885,8 @@ const RATE_TREND = {
   wRate:    {label:'加权达成',          f:t=>MET.wRate(t),  a:t=>t.a,  b:t=>t.f1, aLabel:'订单销量',              bLabel:'销售预测（加权）'},
   mOosRate: {label:'M版断货清洗达成率',  f:t=>MET.mOos(t),   a:t=>t.f5, b:t=>t.f4, aLabel:'断货清洗-预测（最新版）', bLabel:'销售预测（最新版）'},
   wOosRate: {label:'加权断货清洗达成率', f:t=>MET.wOos(t),  a:t=>t.f2, b:t=>t.f1, aLabel:'断货清洗-预测',          bLabel:'销售预测（加权）'},
+  bandShare:  {label:'预测量占比',       f:t=>bandSelf(t),  a:t=>t.f1q, b:t=>t.f1, aLabel:'70%-130%预测量',        bLabel:'销售预测（加权）'},
+  bandShare4: {label:'最新版预测量占比', f:t=>bandSelf4(t), a:t=>t.f4q, b:t=>t.f4, aLabel:'最新版70%-130%预测量',   bLabel:'销售预测（最新版）'},
 };
 /* 趋势窗口：截至所选周期的最近 TWIN 个周期（数据不足时取现有最早区间，保证至少 2 个点） */
 function trendPeriods(){
@@ -1570,9 +1572,9 @@ function rowHTML(r, i, colLabel, curTot, on, twoCol, auxList, clkRate){
     ${gapCell(MET.mOosGap(r), `销售预测(最新版) ${fmtN(r.f4,1)} − 断货清洗(最新版) ${fmtN(r.f5,1)}`, 'mOosGap')}
     ${gapCell(MET.wOosGap(r), `销售预测(加权) ${fmtN(r.f1,1)} − 断货清洗 ${fmtN(r.f2,1)}`, 'wOosGap')}
     <td class="num" data-c="f1q">${fmtN(r.f1q,1)}</td>
-    <td data-c="bandShare"><div class="share"><div class="track"><div class="fill" style="width:${bw.toFixed(1)}%"></div></div><span class="txt" title="${esc(bandTip)}">${fmtPct(bs)}</span></div></td>
+    <td data-c="bandShare"${clkRate?' class="rt" data-rt="bandShare"':''}><div class="share"><div class="track"><div class="fill" style="width:${bw.toFixed(1)}%"></div></div><span class="txt" title="${esc(bandTip+(clkRate?`\n\n点击查看该项「预测量占比」的近 ${TWIN} ${U}趋势`:''))}">${fmtPct(bs)}</span></div></td>
     <td class="num" data-c="f4q">${fmtN(r.f4q,1)}</td>
-    <td data-c="bandShare4"><div class="share"><div class="track"><div class="fill" style="width:${bw4.toFixed(1)}%"></div></div><span class="txt" title="${esc(bandTip4)}">${fmtPct(bs4)}</span></div></td>
+    <td data-c="bandShare4"${clkRate?' class="rt" data-rt="bandShare4"':''}><div class="share"><div class="track"><div class="fill" style="width:${bw4.toFixed(1)}%"></div></div><span class="txt" title="${esc(bandTip4+(clkRate?`\n\n点击查看该项「最新版预测量占比」的近 ${TWIN} ${U}趋势`:''))}">${fmtPct(bs4)}</span></div></td>
   </tr>`;
 }
 

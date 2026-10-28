@@ -355,7 +355,7 @@ out.达成率可点 = (()=>{
   const dims=['业务组','BU','产品组','业务负责人','三级分类','国家Listing','SKU'];
   const h=grab('产品组');
   const rowsN=(h.match(/<tr class="[^"]*" data-name=/g)||[]).length;
-  const cells=(h.match(/<td class="rc rt" data-c="[^"]*" data-rt="[^"]*">/g)||[]).length;
+  const cells=(h.match(/<td[^>]*data-rt="[^"]*"/g)||[]).length;
   const metrics=[...new Set([...h.matchAll(/data-rt="([^"]*)"/g)].map(m=>m[1]))];
   const siteN=((store['id:siteMatrix']||'').match(/data-rt=/g)||[]).length;
   const noTrendUI=!/class="dt-sel"/.test(h) && !/data-dt=/.test(h);
@@ -385,10 +385,20 @@ out.趋势弹窗 = (()=>{
     const h3=store['id:tpop']||'';
     const leg3=/销售预测（M-1）/.test(h3) && /M-1版达成/.test(h3);
     const c3=chipOf(h3);
+    openTrendPop('产品组','厨房收纳产品组','bandShare');
+    const h4=store['id:tpop']||'';
+    const leg4=/70%-130%预测量/.test(h4) && /销售预测（加权）/.test(h4) && /预测量占比/.test(h4);
+    const c4=chipOf(h4);
+    const bars4=(chart().match(/<rect /g)||[]).length;
+    openTrendPop('产品组','厨房收纳产品组','bandShare4');
+    const h5=store['id:tpop']||'';
+    const leg5=/最新版70%-130%预测量/.test(h5) && /销售预测（最新版）/.test(h5) && /最新版预测量占比/.test(h5);
+    const c5=chipOf(h5);
     closeTrendPop();
     return '打开='+shown+' 柱='+bars+' 折线='+line+' 标题正确='+title+' 图例正确='+leg
-      +' | 无下拉='+noSel+' 口径标签='+[c1,c2,c3].join(' / ')
-      +' | 换口径图例正确='+leg2+' / '+leg3
+      +' | 无下拉='+noSel+' 口径标签='+[c1,c2,c3,c4,c5].join(' / ')
+      +' | 换口径图例正确='+leg2+' / '+leg3+' / '+leg4+' / '+leg5
+      +' | 占比口径柱数='+bars4
       +' | 关闭后hidden='+document.getElementById('tpop').hidden+' 内容已清空='+(store['id:tpop']==='');
   }catch(e){ return 'ERR:'+e.message; }
 })();
