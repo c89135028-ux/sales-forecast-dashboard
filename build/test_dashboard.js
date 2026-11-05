@@ -207,18 +207,62 @@ out.SKU面包屑 = (()=>{
   return '原始='+first+' → 面包屑='+bar.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,40);
 })();
 out.自定义列 = (()=>{
-  state.hideCols = new Set(['mRate','m1Rate','mGap']);
+  state.hideCols = {};
+  state.hideCols[ctxKey('业务组')] = new Set(['mRate','m1Rate','mGap']);
   renderAll();
   const h = grab('业务组');
   const idx = (h.match(/<th class="th-[^"]*" data-c="/g)||[]).length;
   const grps = [...h.matchAll(/<th class="grp [^"]*" colspan="(\\d+)">([^<]*)</g)].map(m=>m[2]+'('+m[1]+')').join(' ');
   const dh = /data-hide="[^"]*mGap/.test(h);
   const twoName = (grab('SKU').match(/<th class="stk c-name2"/g)||[]).length===1;
-  state.hideCols = new Set(); renderAll();
-  return '可见指标列='+idx+' 分组='+grps+' data-hide='+dh+' SKU两列名称='+twoName+' 复位后='+(grab('业务组').match(/<th class="th-[^"]*" data-c="/g)||[]).length;
+  state.hideCols = {}; renderAll();
+  return '可见指标列='+idx+'(应为14) 分组='+grps+' data-hide='+dh+' SKU两列名称='+twoName+' 复位后='+(grab('业务组').match(/<th class="th-[^"]*" data-c="/g)||[]).length;
+})();
+/* 导出的 CSV 必须与「自定义列」勾选一致：被隐藏的列不得出现在表头 / 数据行里 */
+out.导出跟随自定义列 = (()=>{
+  const th = (t,c)=>({ hasAttribute:()=>false, getAttribute:k=>k==='data-c'? (c||null):null, textContent:t });
+  const td = (t,c)=>({ getAttribute:k=>k==='data-c'? (c||null):null, textContent:t });
+  const mkTable = hideStr => ({
+    getAttribute: k => k==='data-hide'? (hideStr||null) : null,
+    querySelectorAll(sel){
+      if(sel==='thead th') return [
+        {hasAttribute:()=>true, getAttribute:()=>null, textContent:'达成率'},   // 分组标题行，应跳过
+        th('#'), th('业务组'), th('M版达成','mRate'), th('M-1版达成','m1Rate'), th('订单销量','a'),
+      ];
+      if(sel==='tbody tr') return [{ querySelectorAll: ()=>[
+        td('1'), td('拉美收纳宠户组'), td('120.0%','mRate'), td('110.0%','m1Rate'), td('1234','a')] }];
+      return [];
+    }
+  });
+  const orig = { qs: document.querySelector, ce: document.createElement, blob: globalThis.Blob,
+                 cou: URL.createObjectURL, ru: URL.revokeObjectURL };
+  let captured='';
+  try{
+    globalThis.Blob = class { constructor(parts){ captured = parts.join(''); } };
+    document.createElement = ()=>({ click(){} });
+    URL.createObjectURL = ()=>'blob:test';
+    URL.revokeObjectURL = ()=>{};
+    const run = hideStr => {
+      captured='';
+      const t = mkTable(hideStr);
+      document.querySelector = sel => /data-tkey/.test(sel)? t : orig.qs(sel);
+      exportTableCSV('业务组');
+      return captured.replace(/^\\uFEFF/,'').split('\\n');
+    };
+    const full = run('');
+    const cut  = run('mRate m1Rate');
+    const cutCols = cut[0].split(',').length;
+    const ok = cut[0].indexOf('M版达成')<0 && cut[0].indexOf('M-1版达成')<0
+            && cutCols===3 && cut[1].split(',').length===3;
+    return '全量列='+full[0].split(',').length+' 隐藏2列后='+cutCols+' | 表头='+cut[0]
+      +' | 数据='+cut[1]+' | 隐藏列已排除='+ok;
+  } finally {
+    document.querySelector = orig.qs; document.createElement = orig.ce;
+    globalThis.Blob = orig.blob; URL.createObjectURL = orig.cou; URL.revokeObjectURL = orig.ru;
+  }
 })();
 out.缺口符号 = (()=>{
-  state.hideCols = new Set(); state.hide = {}; state.drill = {};
+  state.hideCols = {}; state.hide = {}; state.drill = {};
   state.pidx = LASTW; state.site = 'ALL'; renderAll();
   const h = grab('业务组');
   const vals = h.split('class="gapv').slice(1).map(function(x){
@@ -230,7 +274,7 @@ out.缺口符号 = (()=>{
     +' fmtGap(不足/超出/持平)='+[fmtGap(12.3),fmtGap(-4.5),fmtGap(0)].join(' / ');
 })();
 out.构成条显隐 = (()=>{
-  state.hideCols = new Set(); state.hide = {}; state.drill = {}; state.q = {};
+  state.hideCols = {}; state.hide = {}; state.drill = {}; state.q = {};
   state.pidx = LASTW; state.site = 'ALL'; renderAll();
   const has = k => /class="compline"/.test(grab(k));
   const small = ['业务组','BU','产品组','业务负责人'].filter(k=>!has(k));
@@ -240,7 +284,7 @@ out.构成条显隐 = (()=>{
   return '小维度缺条='+(small.join(',')||'无')+' | 高基数仍显示='+(big.join(',')||'无')+' | 三级分类表格正常='+topOk+' | 阈值='+COMP_MAX;
 })();
 out.三级分类列 = (()=>{
-  state.hideCols = new Set(); state.hide = {}; state.drill = {}; state.q = {};
+  state.hideCols = {}; state.hide = {}; state.drill = {}; state.q = {};
   state.pidx = LASTW; state.site = 'ALL'; renderAll();
   const lst = grab('国家Listing');
   const th3 = lst.indexOf('<th class="stk c-name3" rowspan="2">三级分类<') >= 0;

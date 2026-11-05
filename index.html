@@ -1276,21 +1276,26 @@ const exportBtnHTML = (tblKey)=> `<button class="expbtn" data-export="${esc(tblK
 function exportTableCSV(tblKey){
   const table = document.querySelector(`table[data-tkey="${esc(tblKey)}"]`);
   if(!table) return;
-  const hide = hideColsSet(tblKey);
+  /* 实际隐藏的列 = 自定义列 + 该表默认排除列（SKU 表默认藏 4 列）。
+     直接用表格自身的 data-hide 属性判定，与画面上看到的完全一致。 */
+  const hidden = new Set((table.getAttribute('data-hide')||'').split(/\s+/).filter(Boolean));
+  const keep = el => { const c = el.getAttribute('data-c'); return !c || !hidden.has(c); };
   const rows = [];
-  // 收集表头（跳过带 colspan 的分组标题行，仅取实际列头）
+  // 收集表头（跳过带 colspan 的分组标题行，仅取实际列头；隐藏列不导出）
   const headers = [];
   table.querySelectorAll('thead th').forEach(th=>{
     if(th.hasAttribute('colspan')) return;   // 跳过 "订单达成率" 等分组标题
+    if(!keep(th)) return;                    // 自定义列里被取消勾选的列不导出
     const t = th.textContent.replace(/[⇅▼▲]+/,'').trim();
     if(t) headers.push(t);
   });
   rows.push(headers.map(h=>`"${h}"`).join(','));
 
-  // 收集数据行
+  // 收集数据行（同样跳过隐藏列，保证列数与表头一一对应）
   table.querySelectorAll('tbody tr').forEach(tr=>{
     const cells = [];
     tr.querySelectorAll('td').forEach(td=>{
+      if(!keep(td)) return;
       let v = td.textContent.trim();
       // 名称列里的 "已下钻" 标记去掉
       v = v.replace(/已下钻/g,'').trim();
