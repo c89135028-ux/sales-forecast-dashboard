@@ -86,6 +86,9 @@
 - ⚠️ 沙箱里 `git push` / `curl -X POST` 可能被 SIGTERM 中断（exit 1 无输出）→ 重试通常可过；先 `git log` / `git ls-remote` 确认。push 用 `git push "https://USER:$TOKEN@github.com/USER/REPO.git" main`，别用裸 `git push origin main`。
 - ⚠️ `git credential fill` **不能放进 `bash -c` 子 shell**（token 变空 → 401），必须直接管道。
 - `.gitignore`：`备份/`、`build/_composed_err.js`、`__pycache__/`、`dist/`。线上比本地少约 1.6KB = CRLF→LF，内容无损。
+- ⚠️ **仓库根目录必须有 `.nojekyll`**（空文件）：2026-11-10 起 Pages 的 Jekyll 构建连续两次 `errored / Page build failed`（内容本身没问题），加 `.nojekyll` 后立即 `built`。排查命令：
+  `curl -s -H "Authorization: Bearer $TOKEN" .../pages/builds?per_page=2` 看 `status`；`built` 后再核对线上 `builtAt`。
+- ⚠️ **push 后线上不会立刻更新**，通常 2~5 分钟；用 `index.html?t=$(date +%s)` 绕 CDN 缓存，比对「本地去 CRLF == 线上」才算发布成功。
 
 ## 复用
 - 同类「Excel → 多维度看板」需求可复用技能 `~/.workbuddy/skills/dimension-kpi-dashboard/`（SKILL.md 含全部踩坑约定，assets/ 有模板与脚本）。
