@@ -154,6 +154,22 @@ def check_mode(key):
             fails.append(f'{dim} 不守恒 {v} != {tot}')
         print(f'  {dim:<12} 组数 {len(g):>5}  求和 {v:>14,.2f}  {"OK" if ok else "FAIL"}')
 
+    # ---- 2.5) BU ↔ 业务组 唯一归属（用户给定归属表，见 build_data*.py 的 BU_GROUP）----
+    print()
+    print('[2.5] BU 是否只属于一个业务组（按用户归属表分类）')
+    bu_i, grp_i, per_i = 3, 2, 0
+    seen = {}
+    for r in recs:
+        seen.setdefault(r[bu_i], set()).add(r[grp_i])
+    bad_bu = {b: sorted(v) for b, v in seen.items() if len(v) > 1}
+    for b in sorted(seen):
+        print(f"  {d['dims']['BU'][b]:<12} → {', '.join(sorted(d['dims']['业务组'][g] for g in seen[b]))}")
+    if bad_bu:
+        fails.append('、'.join(d['dims']['BU'][b] for b in bad_bu) + ' 跨多个业务组')
+        print('  FAIL：上述 BU 跨多个业务组')
+    else:
+        print('  OK：每个 BU 唯一归属')
+
     # ---- 3) 行数 / listing 回填 ----
     print()
     print('[3] 行数与 listing 回填')

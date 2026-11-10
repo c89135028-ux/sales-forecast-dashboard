@@ -39,6 +39,15 @@ LATEST_ATTR_SRC = [
     r'E:/ziel浏览器下载/日明细数据 (1).xlsx',   # 2026-11-01 周表（最新）
 ]
 LATEST_ATTR_COLS = ['三级分类', '产品组', '业务负责人']
+# 业务组 ↔ BU 归属表（用户 2026-11-10 明确给定；新增 BU 时在这里登记一行即可）
+BU_GROUP = {
+    '衣物收纳BU': '拉美收纳宠户组',
+    '宠物用品BU': '拉美收纳宠户组',
+    '户外休闲BU': '拉美收纳宠户组',
+    '厨卫&寝具BU': '拉美家具桌椅组',
+    '家具BU':     '拉美家具桌椅组',
+    '装饰&桌椅BU': '拉美家具桌椅组',
+}
 TIME_COL = '周首日'
 # 兜底：仅当源表缺「业务组 / 产品组 / 业务负责人」列时才启用，按 最早SKU 从上一期明细回填
 ATTR_SRC = r'D:/Thinkpad/下载/日明细数据 (24).xlsx'   # (33) 缺产品组时用最近的含列周表回填
@@ -143,57 +152,26 @@ def apply_latest_attrs(df):
 
 
 def apply_bu_group(df):
-    """业务组 ← BU 的唯一父子映射（取最新源），只纠正「少数派脏行」。
+    """按用户给定的「BU → 业务组」归属表重新分类，**覆盖全部周期**。
 
-    源表偶发把某 BU 的个别行写成另一个业务组（2026-10 源表里 墨西哥站 JKA011A01：
-    BU=装饰&桌椅BU 但 业务组=拉美收纳宠户组；同表其余 461 行都是家具桌椅组）。
-    这种行会让「业务组」板块下凭空多出一个不属于它的 BU。
-
-    ⚠️ 但不能整体覆盖：2026-07/08 的源表里，衣物收纳BU / 户外休闲BU 有 6%~9% 的行
-    归在拉美家具桌椅组；2026-08/09 周表里 床具产品组(王雅馨) 有约 3% 的行归在收纳宠户组
-    —— 这些更像当时的组织分工差异，整体覆盖会改写历史口径。
-    因此只在「该周期该 BU 的偏离行 ≤1%」时才当脏行纠正，否则原样保留并打印提示。
+    业务组是 BU 的上级。源表历史上同一 BU 会分属两个业务组
+    （2026-07/08 源表里 衣物收纳BU / 户外休闲BU 有 6~9% 归家具桌椅组，
+    家具BU 有 9% 归收纳组；2026-08/09 周表里 床具产品组(王雅馨) 约 3% 归收纳组），
+    2026-10 还出现过单行串行（墨西哥站 JKA011A01）。
+    用户已明确归属表，故不再用阈值判断，一律按表归类；未登记的 BU 原样保留并打印。
     """
     if 'BU' not in df.columns or '业务组' not in df.columns:
         return df
-    mp = {}
-    for p in [p for p in LATEST_ATTR_SRC if os.path.exists(p)]:
-        d = pd.read_excel(p, sheet_name=0)
-        g = d[['BU', '业务组']].dropna()
-        g['BU'] = g['BU'].astype(str).str.strip()
-        g['业务组'] = g['业务组'].astype(str).str.strip()
-        g = g[(g['BU'] != '') & (g['业务组'] != '')]
-        for bu, sub in g.groupby('BU'):
-            mp[bu] = sub['业务组'].value_counts().index[0]
-    if not mp:
-        print('业务组↔BU 一致性：未找到基准文件，跳过')
-        return df
-
     bu = df['BU'].astype(str).str.strip()
-    grp = df['业务组'].astype(str).str.strip()
-    newv = bu.map(mp)
-    dev = newv.notna() & (grp != newv)
-    if not dev.any():
-        print('业务组↔BU 一致性：无不匹配行')
-        return df
-
-    n_fix = 0
-    for t, idx in df.groupby(TIME_COL).groups.items():
-        sub_idx = list(idx)
-        for b in bu.loc[sub_idx].unique():
-            rows = [i for i in sub_idx if bu.loc[i] == b]
-            bad = [i for i in rows if dev.loc[i]]
-            if not bad:
-                continue
-            share = len(bad) / len(rows)
-            if share > 0.01:
-                print(f'   {t} {b}：{len(bad)}/{len(rows)} 行（{share:.0%}）与最新口径不同，'
-                      f'疑似历史分工差异 → 保留原值')
-                continue
-            df.loc[bad, '业务组'] = mp[b]
-            n_fix += len(bad)
-            print(f'   {t} {b}：纠正 {len(bad)}/{len(rows)} 行 → {mp[b]}')
-    print(f'业务组↔BU 一致性：本轮纠正 {n_fix} 行')
+    newv = bu.map(BU_GROUP)
+    unknown = sorted(set(bu[newv.isna()].unique()))
+    if unknown:
+        print(f'业务组归类：未登记的 BU {unknown} → 保持源表原值（请补充到 BU_GROUP）')
+    mask = newv.notna()
+    old = df['业务组'].astype(str).str.strip()
+    changed = int((mask & (old != newv)).sum())
+    print(f'业务组归类：按归属表覆盖 {int(mask.sum())} 行，其中与原值不同 {changed} 行')
+    df.loc[mask, '业务组'] = newv[mask]
     return df
 
 
