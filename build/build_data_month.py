@@ -28,8 +28,16 @@ SRCS = [
     r'D:/Thinkpad/下载/日明细数据 (32).xlsx',   # 完整 2026-10（M-1 列与最新版完全相同，被 (35) 整月替换）
     r'D:/Thinkpad/下载/日明细数据 (35).xlsx',   # 完整 2026-10（M-1 列已修复，708 行真差异；被 (39) 整月覆盖）
     r'D:/Thinkpad/下载/日明细数据 (39).xlsx',   # 完整 2026-10（802 行 M-1≠最新版真差异；被下一源整月覆盖）
-    r'C:/Users/Thinkpad/Downloads/日明细数据.xlsx',   # 完整 2026-10（订单 112,853，较 (39) 更完整；整月覆盖 (39)）
+    r'C:/Users/Thinkpad/Downloads/日明细数据.xlsx',   # 完整 2026-10（订单 112,853，较 (39) 更完整；被 (39) 之后的源覆盖）
+    r'E:/ziel浏览器下载/日明细数据 (2).xlsx',   # 2026-11（新月，17列齐全；同时是维度口径最新基准）
 ]
+# 维度口径以「最新源」为准：三级分类 / 产品组 / 业务负责人
+# 人员与归属会随时间调整；历史周期也按最新归属统计，避免同一个人被拆成两行
+LATEST_ATTR_SRC = [
+    r'E:/ziel浏览器下载/日明细数据 (2).xlsx',   # 2026-11 月表（最新）
+    r'E:/ziel浏览器下载/日明细数据 (1).xlsx',   # 2026-11-01 周表（最新）
+]
+LATEST_ATTR_COLS = ['三级分类', '产品组', '业务负责人']
 # listing 对应表：列 = 国家 / 最早SKU / 最新国家Listing，用于回填源表中空白的 listing
 LISTING_MAP = r'E:/不重要文件/国家listing对应表.xlsx'
 OUT = r'E:/WorkBuddy/2026-09-20-13-53-33/build/data_month.json'
@@ -94,11 +102,60 @@ def merge_sources(paths):
     return pd.concat(parts, ignore_index=True)
 
 
+def apply_latest_attrs(df):
+    """按最新源重建「最早SKU → 三级分类/产品组/业务负责人」映射，并覆盖**所有周期**。
+
+    用户明确要求：这三个维度以最新为准。人员/分类会随时间调整，若历史行保留旧值，
+    同一个人会被拆成两行。
+    """
+    paths = [p for p in LATEST_ATTR_SRC if os.path.exists(p)]
+    if not paths:
+        print('维度口径（最新源）：未找到基准文件，跳过')
+        return df
+    frames = []
+    for p in paths:
+        d = pd.read_excel(p, sheet_name=0)
+        if TIME_COL in d.columns:
+            d = d[d[TIME_COL].astype(str) != '合计']
+        frames.append(d)
+    attr = pd.concat(frames, ignore_index=True)
+    attr['最早SKU'] = attr['最早SKU'].astype(str).str.strip()
+    for c in LATEST_ATTR_COLS:
+        if c not in attr.columns or c not in df.columns:
+            continue
+        sub = attr[['最早SKU', c]].dropna()
+        sub = sub[sub[c].astype(str).str.strip() != '']
+        if not len(sub):
+            continue
+        # 同一 SKU 在最新源里若出现多个取值，取出现次数最多的那个
+        cnt = sub.groupby(['最早SKU', c]).size().reset_index(name='n')
+        cnt = cnt.sort_values(['最早SKU', 'n'], ascending=[True, False]).drop_duplicates('最早SKU')
+        mp = dict(zip(cnt['最早SKU'], cnt[c]))
+        newv = df['最早SKU'].map(mp)
+        mask = newv.notna()
+        old = df[c].astype(str).str.strip()
+        changed = int((mask & (old != newv.astype(str).str.strip())).sum())
+        df.loc[mask, c] = newv[mask]
+        print(f'维度口径（最新源）：{c} 覆盖 {int(mask.sum())} 行，其中与原值不同 {changed} 行')
+    return df
+
+
 def main():
     df = merge_sources(SRCS)
     for c in ('最早SKU', '预测SKU'):
         if c in df.columns:
             df[c] = df[c].astype(str).str.strip()
+
+    # ⚠️ pandas 3 起 astype(str) 不再把 NaN 变成 'nan'（NaN 会保留），
+    # 源表尾部偶发的空行（无 SKU 无维度、仅 1 件销量）会残留 NaN，
+    # 后续 sorted(unique()) 会因 float/str 混排报 TypeError。这类行没有 SKU 身份，直接剔除。
+    _n_nosku = int(df['最早SKU'].isna().sum() + df['预测SKU'].isna().sum())
+    if _n_nosku:
+        print(f'剔除无 SKU 的空行：最早SKU/预测SKU 空值 {_n_nosku} 处')
+        df = df[df['最早SKU'].notna() & df['预测SKU'].notna()].copy()
+
+    # —— 统一维度口径（最新源优先）：三级分类 / 产品组 / 业务负责人 ——
+    df = apply_latest_attrs(df)
 
     # 维度列兜底：源表若有缺失，归「（未标注）」而不是丢行，保证各维度合计守恒
     dims_order = ['业务组', 'BU', '产品组', '三级分类', '业务负责人']
@@ -155,7 +212,12 @@ def main():
 
     dims = {}
     for c in dims_order + dims_extra:
-        dims[c] = [v for v in sorted(df[c].unique())]
+        # 归一化：残留 NaN（未补上的 listing 等）先归「（未标注）」再转字符串，
+        # 否则 unique() 里 float 与 str 混排会让 sorted() 报 TypeError
+        if df[c].isna().any():
+            df[c] = df[c].fillna('（未标注）')
+        df[c] = df[c].astype(str).str.strip()
+        dims[c] = sorted(df[c].unique())
 
     # 数值列：空值按 0 处理
     num_cols = METRICS + ['订单销量']

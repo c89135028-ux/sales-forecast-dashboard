@@ -111,6 +111,12 @@ def check_mode(key):
     else:
         df, origin = merge_sources(paths, tcol)
         raw_n = sum(read_source(p, tcol)[1] for p in paths)
+    # 与构建同规则：无 SKU 身份的空行（源表尾部的残留行）不计入明细
+    if '最早SKU' in df.columns and '预测SKU' in df.columns:
+        _nosku = df['最早SKU'].isna() | df['预测SKU'].isna()
+        if _nosku.any():
+            print(f"  剔除无 SKU 空行 {int(_nosku.sum())} 行（无最早SKU/预测SKU，与构建一致）")
+            df = df[~_nosku].copy()
     print(f"  源表行 {raw_n} → 合并后 {len(df)}｜ json 明细 {len(recs)}｜ 周期 {len(PER)} {unit}")
     print(f"  月份/周期来源：" + '；'.join(f'{m}←{s}' for m, s in sorted(origin.items())))
     print()

@@ -30,7 +30,15 @@ SRCS = [
     r'D:/Thinkpad/下载/日明细数据 (36).xlsx',   # 1 周：10-11（17列齐全，免回填）
     r'D:/Thinkpad/下载/日明细数据 (38).xlsx',   # 1 周：10-18（17列齐全，免回填）
     r'C:/Users/Thinkpad/Downloads/日明细数据 (1).xlsx',   # 1 周：10-25（17列齐全，免回填）
+    r'E:/ziel浏览器下载/日明细数据 (1).xlsx',   # 1 周：11-01（17列齐全，免回填）
 ]
+# 维度口径以「最新源」为准：三级分类 / 产品组 / 业务负责人
+# 人员与归属会随时间调整；历史周期也按最新归属统计，避免同一个人被拆成两行
+LATEST_ATTR_SRC = [
+    r'E:/ziel浏览器下载/日明细数据 (2).xlsx',   # 2026-11 月表（最新）
+    r'E:/ziel浏览器下载/日明细数据 (1).xlsx',   # 2026-11-01 周表（最新）
+]
+LATEST_ATTR_COLS = ['三级分类', '产品组', '业务负责人']
 TIME_COL = '周首日'
 # 兜底：仅当源表缺「业务组 / 产品组 / 业务负责人」列时才启用，按 最早SKU 从上一期明细回填
 ATTR_SRC = r'D:/Thinkpad/下载/日明细数据 (24).xlsx'   # (33) 缺产品组时用最近的含列周表回填
@@ -97,11 +105,59 @@ def merge_sources(paths):
     return pd.concat(parts, ignore_index=True)
 
 
+def apply_latest_attrs(df):
+    """按最新源重建「最早SKU → 三级分类/产品组/业务负责人」映射，并覆盖**所有周期**。
+
+    用户明确要求：这三个维度以最新为准。人员/分类会随时间调整，若历史行保留旧值，
+    同一个人会被拆成两行（如 蓝晓琳 → 陈晓龙 的 56 个 SKU）。
+    """
+    paths = [p for p in LATEST_ATTR_SRC if os.path.exists(p)]
+    if not paths:
+        print('维度口径（最新源）：未找到基准文件，跳过')
+        return df
+    frames = []
+    for p in paths:
+        d = pd.read_excel(p, sheet_name=0)
+        d = d[d.iloc[:, 0].astype(str) != '合计']
+        frames.append(d)
+    attr = pd.concat(frames, ignore_index=True)
+    attr['最早SKU'] = attr['最早SKU'].astype(str).str.strip()
+    for c in LATEST_ATTR_COLS:
+        if c not in attr.columns or c not in df.columns:
+            continue
+        sub = attr[['最早SKU', c]].dropna()
+        sub = sub[sub[c].astype(str).str.strip() != '']
+        if not len(sub):
+            continue
+        # 同一 SKU 在最新源里若出现多个取值，取出现次数最多的那个
+        cnt = sub.groupby(['最早SKU', c]).size().reset_index(name='n')
+        cnt = cnt.sort_values(['最早SKU', 'n'], ascending=[True, False]).drop_duplicates('最早SKU')
+        mp = dict(zip(cnt['最早SKU'], cnt[c]))
+        newv = df['最早SKU'].map(mp)
+        mask = newv.notna()
+        old = df[c].astype(str).str.strip()
+        changed = int((mask & (old != newv.astype(str).str.strip())).sum())
+        df.loc[mask, c] = newv[mask]
+        print(f'维度口径（最新源）：{c} 覆盖 {int(mask.sum())} 行，其中与原值不同 {changed} 行')
+    return df
+
+
 def main():
     df = merge_sources(SRCS)
     for c in ('最早SKU', '预测SKU'):
         if c in df.columns:
             df[c] = df[c].astype(str).str.strip()
+
+    # ⚠️ pandas 3 起 astype(str) 不再把 NaN 变成 'nan'（NaN 会保留），
+    # 源表尾部偶发的空行（无 SKU 无维度）会残留 NaN，后面 sorted(unique()) 会因 float/str 混排报错。
+    # 这类行没有 SKU 身份，直接剔除（verify_data.py 用同一规则）。
+    _n_nosku = int(df['最早SKU'].isna().sum() + df['预测SKU'].isna().sum())
+    if _n_nosku:
+        print(f'剔除无 SKU 的空行：最早SKU/预测SKU 空值 {_n_nosku} 处')
+        df = df[df['最早SKU'].notna() & df['预测SKU'].notna()].copy()
+
+    # —— 统一维度口径（最新源优先）：三级分类 / 产品组 / 业务负责人 ——
+    df = apply_latest_attrs(df)
 
     # —— 补全源表缺失的维度列：按 最早SKU 从上期明细回填；实在没有的归「（未标注）」 ——
     # 检查方式：(a) 列完全不存在；(b) 列存在但有 NaN（新源缺该列但旧源有，concat 后值为 NaN）
