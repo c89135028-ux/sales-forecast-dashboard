@@ -216,9 +216,11 @@ table.wide[data-hide~="a"] [data-c="a"]{display:none}
 table.wide[data-hide~="f5"] [data-c="f5"]{display:none}
 table.wide[data-hide~="mGap"] [data-c="mGap"]{display:none}
 table.wide[data-hide~="mOosGap"] [data-c="mOosGap"]{display:none}
+table.wide[data-hide~="wGap"] [data-c="wGap"]{display:none}
 table.wide[data-hide~="wOosGap"] [data-c="wOosGap"]{display:none}
 table.wide[data-hide~="f1q"] [data-c="f1q"]{display:none}
 table.wide[data-hide~="f4q"] [data-c="f4q"]{display:none}
+table.wide[data-hide~="bandShare"] [data-c="bandShare"]{display:none}
 table.wide[data-hide~="bandShare4"] [data-c="bandShare4"]{display:none}
 .colbtn{display:inline-flex;align-items:center;gap:6px;font-family:inherit;font-size:12px;color:var(--ink2);
   background:#fff;border:1px solid var(--line);border-radius:8px;padding:5px 11px;cursor:pointer;transition:.15s}
@@ -646,6 +648,7 @@ const MET = {
   wOos:    o=>rateOf(o.f2, o.f1),  // 加权断货清洗达成率 = 断货清洗-销售预测 ÷ 销售预测(加权)
   mGap:    o=>o.f4 - o.a,          // M版订单预测缺口 = 销售预测(最新版) − 订单销量
   mOosGap: o=>o.f4 - o.f5,         // M版断货清洗缺口 = 销售预测(最新版) − 断货清洗-销售预测(最新版)
+  wGap:    o=>o.f1 - o.a,          // 加权订单预测缺口 = 销售预测(加权) − 订单销量
   wOosGap: o=>o.f1 - o.f2          // 加权断货清洗缺口 = 销售预测(加权) − 断货清洗-销售预测
 };
 /* 加权版 70%-130% 预测量占比：分子 = 该项 70%-130% 预测量，分母 = **该项自身**的销售预测(加权)
@@ -1119,10 +1122,10 @@ function renderTrendPop(){
 /* 固定列宽 —— 表头文字是用户给定的原文，不要改动文字；放不下就加宽对应列。
    实测每个表头「文字 + 排序箭头 + 左右 padding」的占宽：
    mRate 78 / m1Rate 89 / wRate 78 / mOosRate 129 / wOosRate 129 /
-   f4 129 / f3 120 / f1 119 / a 78 / f5 175 / mGap 119 / mOosGap 119 / wOosGap 119 / f1q 165 / bandShare 88 / f4q 172 / bandShare4 132
+   f4 129 / f3 120 / f1 119 / a 78 / f5 175 / mGap 119 / mOosGap 119 / wGap 119 / wOosGap 119 / f1q 165 / bandShare 88 / f4q 172 / bandShare4 132
    下面各列均 ≥ 实测值并留有余量；同组内取相同宽度保持整齐（f5 文案最长，单独给 178）。
    ⚠️ 以后改表头文字，必须重新量一遍并同步这里。 */
-const COLW = [38, 150, 132,132,132,132,132, 140,140,140,140,178, 122,122,122, 168,132, 172,132];
+const COLW = [38, 150, 132,132,132,132,132, 140,140,140,140,178, 122,122,122,122, 168,132, 172,132];
 
 /* ---------- 表头筛选：勾选要显示的维度项 ---------- */
 const FUNNEL='<svg viewBox="0 0 12 12" width="9" height="9" aria-hidden="true"><path d="M.9 1.7h10.2L7.1 6.4v3.8L4.9 9.2V6.4z" fill="currentColor"/></svg>';
@@ -1282,6 +1285,7 @@ const COL_DEF = [
   {k:'f5',       g:1, t:'断货清洗-销售预测（最新版）', th:'th-val num', v:o=>o.f5},
   {k:'mGap',     g:2, t:'M版订单预测缺口',     th:'th-gap num', v:o=>MET.mGap(o)},
   {k:'mOosGap',  g:2, t:'M版断货清洗缺口',     th:'th-gap num', v:o=>MET.mOosGap(o)},
+  {k:'wGap',     g:2, t:'加权订单预测缺口',    th:'th-gap num', v:o=>MET.wGap(o)},
   {k:'wOosGap',  g:2, t:'加权断货清洗缺口',    th:'th-gap num', v:o=>MET.wOosGap(o)},
   {k:'f1q',      g:3, t:'加权版70%-130%的预测量', th:'th-band num', v:o=>o.f1q},
   {k:'bandShare',g:3, t:'预测量占比',          th:'th-band', v:o=>bandSelf(o)},
@@ -1600,6 +1604,7 @@ function rowHTML(r, i, colLabel, curTot, on, twoCol, auxList, clkRate){
     <td class="num" data-c="f5">${fmtN(r.f5,1)}</td>
     ${gapCell(MET.mGap(r),    `销售预测(最新版) ${fmtN(r.f4,1)} − 订单销量 ${fmtN(r.a)}`, 'mGap')}
     ${gapCell(MET.mOosGap(r), `销售预测(最新版) ${fmtN(r.f4,1)} − 断货清洗(最新版) ${fmtN(r.f5,1)}`, 'mOosGap')}
+    ${gapCell(MET.wGap(r),    `销售预测(加权) ${fmtN(r.f1,1)} − 订单销量 ${fmtN(r.a)}`, 'wGap')}
     ${gapCell(MET.wOosGap(r), `销售预测(加权) ${fmtN(r.f1,1)} − 断货清洗 ${fmtN(r.f2,1)}`, 'wOosGap')}
     <td class="num" data-c="f1q">${fmtN(r.f1q,1)}</td>
     <td data-c="bandShare"${clkRate?' class="rt" data-rt="bandShare"':''}><div class="share"><div class="track"><div class="fill" style="width:${bw.toFixed(1)}%"></div></div><span class="txt" title="${esc(bandTip+(clkRate?`\n\n点击查看该项「预测量占比」的近 ${TWIN} ${U}趋势`:''))}">${fmtPct(bs)}</span></div></td>

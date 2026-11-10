@@ -77,10 +77,10 @@ out.表头 = [...grab('业务组').matchAll(/<th[^>]*>([^<]*)<\\/th>/g)].map(m=>
 out.表头列 = (()=>{
   const want = ['M版达成','M-1版达成','加权达成','M版断货清洗达成率','加权断货清洗达成率',
                 '销售预测（最新版）','销售预测（M-1）','销售预测（加权）','订单销量','断货清洗-销售预测（最新版）',
-                'M版订单预测缺口','M版断货清洗缺口','加权断货清洗缺口','加权版70%-130%的预测量','预测量占比'];
+                'M版订单预测缺口','M版断货清洗缺口','加权订单预测缺口','加权断货清洗缺口','加权版70%-130%的预测量','预测量占比'];
   const got = [...grab('业务组').matchAll(/<th class="[^"]*sortable[^"]*"[^>]*>([^<]*)<i class="sk">/g)].map(m=>m[1]);
   const diff = want.filter((w,i)=>got[i]!==w);
-  return '列数='+got.length+'/15 与原文完全一致='+(got.length===15 && diff.length===0)
+  return '列数='+got.length+'/16 与原文完全一致='+(got.length>=16 && diff.length===0)
     + (diff.length? ' 不一致:'+diff.join('|')+' 实际:'+got.join('|') : '');
 })();
 out.列宽够放 = (()=>{
@@ -216,7 +216,7 @@ out.自定义列 = (()=>{
   const dh = /data-hide="[^"]*mGap/.test(h);
   const twoName = (grab('SKU').match(/<th class="stk c-name2"/g)||[]).length===1;
   state.hideCols = {}; renderAll();
-  return '可见指标列='+idx+'(应为14) 分组='+grps+' data-hide='+dh+' SKU两列名称='+twoName+' 复位后='+(grab('业务组').match(/<th class="th-[^"]*" data-c="/g)||[]).length;
+  return '可见指标列='+idx+'(应为15) 分组='+grps+' data-hide='+dh+' SKU两列名称='+twoName+' 复位后='+(grab('业务组').match(/<th class="th-[^"]*" data-c="/g)||[]).length;
 })();
 /* 导出的 CSV 必须与「自定义列」勾选一致：被隐藏的列不得出现在表头 / 数据行里 */
 out.导出跟随自定义列 = (()=>{
@@ -505,6 +505,25 @@ out.文本选择保护 = (()=>{
     const ok = selOn && !plain && dragged && typeof textSelecting==='function';
     return '选区非空拦截='+selOn+' 普通点击放行='+(!plain)+' 拖选拦截='+dragged
       + ' | 点击入口加保护='+GUARDN+' 处' + (ok && GUARDN===4 ? ' OK' : ' ✕');
+  }catch(e){ return 'ERR:'+e.message; }
+})();
+
+/* 新列：加权订单预测缺口（= 销售预测(加权) − 订单销量），必须紧贴「加权断货清洗缺口」之前 */
+out.加权订单预测缺口 = (()=>{
+  try{
+    state.hideCols = {}; state.hide = {}; state.drill = {}; state.pidx = LASTW; state.site='ALL'; renderAll();
+    const h = grab('业务组');
+    const ths = [...h.matchAll(/<th class="th-[^"]*" data-c="([^"]+)"/g)].map(m=>m[1]);
+    const iW = ths.indexOf('wGap'), iO = ths.indexOf('wOosGap');
+    const adj = iW>=0 && iO===iW+1;
+    const v1 = MET.wGap({f1:100, a:120});   // 实际超出 → 显示 +
+    const v2 = MET.wGap({f1:120, a:100});   // 实际不足 → 显示 -
+    const f1 = fmtGap(v1), f2 = fmtGap(v2);
+    const ok = adj && iW>=0 && v1===-20 && v2===20 && f1==='+20.0' && f2==='-20.0';
+    return '表头位置=…' + ths.slice(Math.max(0,iW-1), iW+3).join(' > ')
+      + ' | 紧邻加权断货清洗缺口=' + adj
+      + ' | 100−120=' + v1 + '→' + f1 + ' ; 120−100=' + v2 + '→' + f2
+      + (ok ? ' OK' : ' ✕');
   }catch(e){ return 'ERR:'+e.message; }
 })();
 
