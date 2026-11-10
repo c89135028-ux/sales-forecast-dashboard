@@ -24,7 +24,10 @@
 - **回归测试 `build/test_dashboard.js`**（Node 直跑，无依赖 DOM 桩，改模板必跑，须 `RUNTIME OK`）。注意 `D` 与 `DB.modes[0]` 是同一对象，往 `D.periods` 追加模拟周期后必须还原 `length`；模板字符串里的 `\n` 要写 `\\n`。
   **「标签重叠」用例 = 柱值标签相撞自动化守门**：调 pure function `trendSVG`，解析 `.bar-lbl` 的 x/y，判据 `|Δy|<12 且横向区间相交`（Arial 近似字宽×10.5px）；覆盖 站点并排(420/517/700)+单站点满宽(1074/1400)+弹窗(700/794)×2 站点共 13 场景，周报与月报各跑一遍（先当前粒度，再 `switchMode` 后切回），须重叠 0。
 - **备份**：`备份/YYYY-MM-DD_HHmm/` + 同名 zip，不覆盖历史快照。内容 = 交付 HTML + `build/` 全量 + `.workbuddy/memory/*.md`。
+  ⚠️ 环境里**没有 `zip` 命令**，用 Python `zipfile` 打包，且 **arcname 必须相对「快照目录」**（zip 根就是快照内容，不套 `时间戳/` 一层）+ 反斜杠换正斜杠 —— 否则 `verify_backup.py` 解压比对会全部「不一致」。
   校验 `build/verify_backup.py [时间戳]`（不传参取最新）：zip 完整性 + 解压↔快照 md5 + 显式清单↔工作区 + 快照↔工作区**双向**全量扫描（`_composed_err.js` 在忽略名单）。两方向都 OK 才算过。
+- ⚠️ **Python 环境**：默认 `python` 是 WorkBuddy 自带 3.13，**可能缺 numpy/pandas**（`ModuleNotFoundError: numpy`）→ `python -m pip install numpy pandas` 即可恢复。
+  ⚠️ **pandas 3.x 起 `astype(str)` 不再把 NaN 转成 `'nan'`（NaN 保留为 float）** → `sorted(unique())` 会因 float/str 混排报 `TypeError`。构建里对维度列改用 `fillna(...)` 后再 `astype(str)`；无 SKU 的空行统一剔除（`build_data*.py` 与 `verify_data.py` 用同一规则，否则行数对账差 1）。
 
 ## 口径（用户明确给定，勿擅改）
 - 达成率：M版 = 订单销量 ÷ 预测(最新版)；M-1版 ÷ 预测(M-1)；加权 ÷ 预测(加权)；M版断货清洗达成率 = 断货清洗(最新版) ÷ 预测(最新版)；加权断货清洗达成率 = 断货清洗 ÷ 预测(加权)。
