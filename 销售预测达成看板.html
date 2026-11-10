@@ -118,7 +118,7 @@ table.wide thead th .rz:hover,table.wide thead th .rz.on{background:linear-gradi
 body.colrz{cursor:col-resize}
 body.colrz *{cursor:col-resize!important;user-select:none!important}
 /* 可排序表头：点一下从高到低，再点一下从低到高（默认订单销量从高到低） */
-table.wide thead th.sortable{cursor:pointer;user-select:none;transition:background .15s,color .15s}
+table.wide thead th.sortable{cursor:pointer;transition:background .15s,color .15s}
 table.wide thead th.sortable:hover{background:#e9f1fd;color:var(--accent)}
 table.wide thead th.sortable .sk{display:inline-block;width:11px;margin-left:3px;font-size:9px;font-style:normal;
   line-height:1;vertical-align:middle;color:#bcc9dc;font-weight:700}
@@ -491,6 +491,26 @@ const state = { mode:null,            // 当前粒度 key
                 colW:{} };    // 自定义列宽：tableKey -> 宽度数组（拖动表头边界调整）
 let ELIM_SET = new Set(); // 命中巴西淘汰清单的 SKU 维度下标（loadMode 时计算）
 
+/* —— 文本选择保护 ——
+   表格里拖选（或 Ctrl+A 全选）是为了复制数据，不能顺带触发行下钻 / 趋势弹窗。
+   判定两条：① 鼠标按下到抬起有明显位移（≥5px，即拖选）② 当前确实存在非空选区。
+   注意 `_selBusy` 在 mouseup 里置位、click 紧随其后触发，所以能拦住这次拖选。 */
+let _mdX = 0, _mdY = 0, _selBusy = false;
+document.addEventListener('mousedown', e=>{ _mdX = e.clientX; _mdY = e.clientY; _selBusy = false; }, true);
+document.addEventListener('mouseup', e=>{
+  const moved = Math.abs(e.clientX - _mdX) + Math.abs(e.clientY - _mdY);
+  let sel = null;
+  try { sel = window.getSelection && window.getSelection(); } catch(err) { sel = null; }
+  _selBusy = moved >= 5 || !!(sel && !sel.isCollapsed && String(sel).trim());
+}, true);
+function textSelecting(){
+  try {
+    const s = window.getSelection && window.getSelection();
+    if(s && !s.isCollapsed && String(s).trim()) return true;
+  } catch(err) { /* 测试桩无 getSelection */ }
+  return _selBusy;
+}
+
 /* 装载某个粒度：替换数据与单位文案，并重置与数据相关的筛选状态。
    两个粒度的周期数、维度取值、下钻项都不同，不重置会出现下标越界 / 下钻命中空集。
    列宽 state.colW 与自定义列 state.hideCols 与数据无关，保留。 */
@@ -764,7 +784,9 @@ function renderSite(){
     </div>`;
   });
   cards.innerHTML=html;
-  cards.querySelectorAll('.scard').forEach(el=>el.onclick=()=>{ state.site=+el.dataset.site; renderAll(); });
+  cards.querySelectorAll('.scard').forEach(el=>el.onclick=()=>{
+    if(textSelecting()) return;            // 拖选/全选复制时不切换站点
+    state.site=+el.dataset.site; renderAll(); });
 
   // KPI
   const prev = prevList? sumRecs(prevList) : null;
@@ -828,6 +850,7 @@ function renderSite(){
     `${wideTable(siteRows, '站点', tot, null, null, null, null, false, null, '_site')}`;
   document.querySelectorAll('#siteMatrix tbody tr').forEach(tr=>{
     tr.onclick = ()=>{
+      if(textSelecting()) return;          // 拖选/全选复制时不切换站点
       const sid = +tr.dataset.sid;
       state.site = (state.site===sid)? 'ALL' : sid;
       renderAll();
@@ -1633,6 +1656,7 @@ function dimBlock(section, dimKey, blockNo){
   // 点某行的达成率数字 → 弹窗看该维度项自己的近 N 期趋势（不要触发整行下钻）
   section.querySelectorAll('td.rt').forEach(td=>{
     td.onclick = ev=>{
+      if(textSelecting()) return;          // 拖选/全选复制时不弹趋势窗
       ev.stopPropagation();
       const tr = td.closest('tr');
       if(tr && tr.dataset.name) openTrendPop(dimKey, tr.dataset.name, td.dataset.rt);
@@ -1641,6 +1665,7 @@ function dimBlock(section, dimKey, blockNo){
 
   section.querySelectorAll('tbody tr').forEach(tr=>{
     tr.onclick=()=>{
+      if(textSelecting()) return;          // 拖选/全选复制时不下钻
       const nm=tr.dataset.name;
       if(state.drill[dimKey]===nm) delete state.drill[dimKey]; else state.drill[dimKey]=nm;
       renderAll();

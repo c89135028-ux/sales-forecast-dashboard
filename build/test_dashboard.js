@@ -490,11 +490,30 @@ out.标签重叠 = (()=>{
       + ' 合计重叠='+tot + (tot===0? ' OK' : ' ✕✕ '+bad.join(' ;; '));
   }catch(e){ return 'ERR:'+e.message; }
 })();
+out.文本选择保护 = (()=>{
+  try{
+    const had = window.getSelection;
+    window.getSelection = ()=>({ isCollapsed:false, toString:()=>'  宠物用品BU  ' });
+    const selOn = textSelecting();                       // 选区非空 → 拦
+    window.getSelection = ()=>({ isCollapsed:true, toString:()=>'' });
+    _selBusy = false;
+    const plain = textSelecting();                       // 普通点击 → 放行
+    _selBusy = true;                                     // 拖选后（mouseup 置位）
+    const dragged = textSelecting();                     // 拖选 → 拦
+    _selBusy = false;
+    if(had===undefined) delete window.getSelection; else window.getSelection = had;
+    const ok = selOn && !plain && dragged && typeof textSelecting==='function';
+    return '选区非空拦截='+selOn+' 普通点击放行='+(!plain)+' 拖选拦截='+dragged
+      + ' | 点击入口加保护='+GUARDN+' 处' + (ok && GUARDN===4 ? ' OK' : ' ✕');
+  }catch(e){ return 'ERR:'+e.message; }
+})();
+
 console.log(JSON.stringify(out,null,1));
 `;
 
+const GUARD_N = (code.match(/if\(textSelecting\(\)\) return;/g) || []).length;
 try {
-  new Function('document', 'console', 'store', 'window', 'DASH_NAME', code + '\n' + test)(doc, console, store, win, DASH);
+  new Function('document', 'console', 'store', 'window', 'DASH_NAME', 'GUARDN', code + '\n' + test)(doc, console, store, win, DASH, GUARD_N);
   console.log('RUNTIME OK');
 } catch (e) {
   fs.writeFileSync(path.join(__dirname, '_composed_err.js'), code + '\n' + test);
