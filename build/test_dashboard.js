@@ -633,23 +633,35 @@ out.Q4冲销异常 = (()=>{
       const volOk = got.length===expTop.length
         && got.every(r=> Math.abs(r.vol - (r.f1 + r.gapShown)) < 0.15);
       const seqHead = k==='share' ? '近4周占比' : '近4周达成';
+      /* 表头：用户指定的 11 列（含负责人与库存三列，文字一字不差） */
       const headOk = cs[i].indexOf('订单销量')>=0 && cs[i].indexOf(seqHead)>=0 && cs[i].indexOf('加权缺口')>=0
-        && cs[i].indexOf('负责人')>=0;
+        && cs[i].indexOf('负责人')>=0
+        && cs[i].indexOf('FBA总可销售展示库存')>=0 && cs[i].indexOf('7DMS')>=0 && cs[i].indexOf('可售天数')>=0;
       /* 负责人列：每行一个，且不能整列都是「—」 */
       const ownN = (cs[i].match(/class="q4own"/g)||[]).length;
       const ownEmpty = (cs[i].match(/class="q4own"[^>]*>—</g)||[]).length;
       const ownOk = ownN === got.length && ownEmpty === 0;
-      /* 「首尾下降但中途回升」的项不能被判成 ①（持续下降） */
+      /* 库存三列：每行 3 格；全部站点下取 MX 口径，不能全空 */
+      const ivN = (cs[i].match(/class="q4iv"/g)||[]).length;
+      const ivEmpty = (cs[i].match(/class="q4iv">—</g)||[]).length;
+      const ivOk = ivN === got.length*3 && ivEmpty*2 < ivN;      /* 「首尾下降但中途回升」的项不能被判成 ①（持续下降） */
       const midRiseN = exp.filter(e=> e.midRise).length;
       const noFalseOne = got.every(r=>{
         const e=expTop.find(x=> x.name===r.name);
         return !e || !e.midRise || r.tier===2;
       });
-      if(!(same&&sorted&&gapOk&&seqLen&&noFalseOne&&auxOk&&volOk&&headOk&&ownOk)) allOk=false;
+      if(!(same&&sorted&&gapOk&&seqLen&&noFalseOne&&auxOk&&volOk&&headOk&&ownOk&&ivOk)) allOk=false;
       det.push(d+'/'+k+' '+got.length+'项'+(same?'':' ✕判定/顺序')+(sorted?'':' ✕缺口排序')+(gapOk?'':' ✕缺口值')+(seqLen?'':' ✕序列长度')+(noFalseOne?'':' ✕中途回升误判①')
         +(auxOk?'':' ✕上级维度列')+(volOk?'':' ✕订单销量列')+(headOk?'':' ✕表头')+(ownOk?'':' ✕负责人列('+ownN+'/'+got.length+',空'+ownEmpty+')')
+        +(ivOk?'':' ✕库存三列('+ivN+'/'+(got.length*3)+',空'+ivEmpty+')')
         +(midRiseN?('(中途回升'+midRiseN+'项)'):''));
     });
+    /* 库存数值必须与源表逐格对上：取第一张卡首行的三格，与 INV.cat 里该项的值比 */
+    const fName=(cs[0].match(/data-q4name="([^"]+)"/)||[])[1];
+    const ivRef=fName ? INV.cat[fName] : null;
+    const ivC=[...cs[0].matchAll(/<td class="q4iv">([^<]*)<\\/td>/g)].map(m=>m[1]).slice(0,3);
+    const ivValOk = !ivRef ? true
+      : (ivC[0]===fmtN(ivRef[0],0) && ivC[1]===invNum(ivRef[1],2) && ivC[2]===invNum(ivRef[2],1));
     const exp0=ref('share','三级分类');
     state.q4more={'share:三级分类':true}; renderQ4();
     const expanded=parse(cards()[0]).length;
@@ -659,6 +671,12 @@ out.Q4冲销异常 = (()=>{
     const siteBak=state.site; state.site=0; renderAll();
     const ref2=ref('rate','国家Listing');
     const follow=parse(cards()[3]).length===Math.min(ref2.length,q4TopN('国家Listing'));
+    /* 库存三列只有 MX 口径：选巴西站（sites[1]）时三列必须全部显示「—」 */
+    state.site=1; renderAll();
+    const brCard=cards()[0]||'';
+    const brIv=(brCard.match(/class="q4iv"/g)||[]).length;
+    const brEmpty=(brCard.match(/class="q4iv">—</g)||[]).length;
+    const brOk = brIv===0 || brIv===brEmpty;
     state.site=siteBak; renderAll();
     /* 三档判定文案：① 连续N周不达且无改善 ② 连续N周不达 ③ 一半及以上不达 */
     const w4=[0,1,2,3];
@@ -739,8 +757,9 @@ out.Q4冲销异常 = (()=>{
     const cl = csv.split('\\n');
     const h0 = cl[0].slice(cl[0].indexOf('"'));      // 跳过 BOM，从第一个引号开始
     const ch = h0.split(',').length;
-    const csvOk = ch === 6 + q4Window().length + 1 && cl.length === rr.length+1
-      && cl[0].indexOf('"加权缺口"')>=0 && cl[0].indexOf('"判定"')>=0 && cl[0].indexOf('"负责人"')>=0;
+    const csvOk = ch === 9 + q4Window().length + 1 && cl.length === rr.length+1
+      && cl[0].indexOf('"加权缺口"')>=0 && cl[0].indexOf('"判定"')>=0 && cl[0].indexOf('"负责人"')>=0
+      && cl[0].indexOf('"FBA总可销售展示库存"')>=0 && cl[0].indexOf('"7DMS"')>=0 && cl[0].indexOf('"可售天数"')>=0;
     /* 视图切换只认 q4 前缀与空 hash：点 Q4 目录（hash 变成 #q4c-N）不能把 Q4 页踢回主看板 */
     const viewOk = (()=>{
       const at = v => { window.location.hash = v; applyQ4View(); return document.body.classList.contains('q4-only'); };
@@ -752,7 +771,7 @@ out.Q4冲销异常 = (()=>{
       return { ok: a===true && b===true && c===true && d===false && e===true, txt: [a,b,c,d,e].join('/') };
     })();
     const ok = allOk && txtOk && oneCol && jumpOk && cellOk && popOk===true && viewOk.ok
-      && sumOk && csvOk
+      && sumOk && csvOk && brOk && ivValOk
       && expanded===exp0.length && collapsed===Math.min(exp0.length,q4TopN('三级分类')) && moreBtn && follow;
     return det.join(' | ')
       + ' | 一行一卡=' + oneCol
@@ -761,7 +780,9 @@ out.Q4冲销异常 = (()=>{
       + ' | 视图切换=' + (viewOk.ok? ('ok '+viewOk.txt) : ('✕ '+viewOk.txt))
       + ' | 集中度一句话=' + (sumOk? ('ok 整体缺口'+fmtN(scopeG,1)+' 三级分类TOP10='+p10Txt+' ListingTOP15='+p15Txt+' TOP'+k40+'达40% 卡片'+sumN+' 导出'+expN)
                                 : ('✕ 卡片'+sumN+'/4 导出'+expN+' 整体'+fmtN(scopeG,1)+' 期望'+p10Txt+'/TOP'+k40+' 同数'+sameTotal))
-      + ' | 导出CSV=' + (csvOk? ('ok 列'+ch+' 行'+(cl.length-1)) : ('✕ 列'+ch+'/期望'+(6+q4Window().length+1)+' 行'+(cl.length-1)+'/'+rr.length))
+      + ' | 导出CSV=' + (csvOk? ('ok 列'+ch+' 行'+(cl.length-1)) : ('✕ 列'+ch+'/期望'+(9+q4Window().length+1)+' 行'+(cl.length-1)+'/'+rr.length))
+      + ' | 库存三列=' + (brOk? ('ok 巴西全空'+brEmpty+'/'+brIv) : ('✕ 巴西仍有值 '+(brIv-brEmpty)+'/'+brIv))
+      + ' | 库存取值=' + (ivValOk? ('ok '+fName+' '+ivC.join('/')) : ('✕ '+fName+' 页面'+ivC.join('/')+' 源表'+(ivRef?[fmtN(ivRef[0],0),invNum(ivRef[1],2),invNum(ivRef[2],1)].join('/'):'—')))
       + ' | 判定文案 ' + (txtOk? (t1+' / '+t2+' / '+t3) : ('✕ '+t1+' | '+t2+' | '+t3))
       + ' | 展开 ' + collapsed + '→' + expanded + '/' + exp0.length + ' 收起按钮=' + moreBtn
       + ' | 跟随站点筛选=' + follow + (ok?' OK':' ✕');

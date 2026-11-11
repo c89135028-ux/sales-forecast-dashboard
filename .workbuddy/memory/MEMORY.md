@@ -4,13 +4,13 @@
 - 单一交付物 `销售预测达成看板.html`（数据内联、零依赖、可离线）。周报+月报同文件，靠筛选栏最左「粒度」芯片 [周][月] 切换（用户要求不拆两个文件）。
 - 🔴 **滚动窗口：新数据只追加，绝不整批替换历史**（用户 10-07 原话「是滚动你懂吗…不是覆盖」）。新表 append 到 `SRCS` 末尾；「紧邻延伸/子集」都按追加，只有明说「只要最新」才替换；**歧义要问**。
   ⚠️ 源表是历史唯一来源（`data.json` 是聚合结果不能反解），构建要读、不能让用户清理。
-- `build/build_all.py` 一键 4 步：`build_data.py`(周→data.json) → `build_data_month.py`(月→data_month.json) → `merge_data.py`(→data_all.json，注入 elimSkus) → `build_html.py`(模板+数据→HTML)。单粒度排查：`build_html.py <data.json> <out.html>`。
+- `build/build_all.py` 一键 5 步：`build_data.py`(周→data.json) → `build_data_month.py`(月→data_month.json) → `build_inventory.py`(→inventory.json，库存三列) → `merge_data.py`(→data_all.json，注入 elimSkus/inv) → `build_html.py`(模板+数据→HTML)。单粒度排查：`build_html.py <data.json> <out.html>`。
 - **多源合并**：`SRCS` 顺序纵向拼接，同一「周期」以靠后的源为准（整周期替换）。先算每期归属源 `owner` 再整期取 —— ⚠️ 禁用 `drop_duplicates(subset=[时间列])`（会每期只留一行）。周 `TIME_COL='周首日'`、月 `'年月'`。加源前先比型（列集合+顺序一致）。
 - **当前源**：周 = (21)(24)(34)(36)(38)+`C:/Users/Thinkpad/Downloads/日明细数据 (1)`+`E:/ziel浏览器下载/日明细数据 (1)` → 11 周 8/23~11/01（24,566 行）；月 = (20)(25)(28)(32)(35)(39)+`.../日明细数据`+`.../日明细数据 (2)` → 5 月 7~11（11,345 行）。
 - ⚠️ 源表末行「合计」会翻倍总量，先剔除 `时间列=='合计'`。
 - **换源标准动作**：append `SRCS` → `build_all.py` → `verify_data.py`（须 ALL CHECKS PASSED）→ `test_dashboard.js`（须 RUNTIME OK）→ `cp` 同步 index.html → 备份 →（用户同意后）push。
   verify 自动从 build_data*.py 解析源路径与合并规则；校验 ①(周期,站点)单元对账 ②维度守恒 ③行数+listing 回填覆盖率 ④周期元信息 ⑤站点集合 ⑥[2.5] 每个 BU 唯一归属。
-- **数据契约**：`data_all.json={builtAt,modes:[{…,key:'week'},{…,key:'month'}],elimSkus}`。加粒度 = 新写 `build_data_*.py` + `MODES` 加一行，模板零改动；`MODES[0]` 为默认。
+- **数据契约**：`data_all.json={builtAt,modes:[{…,key:'week'},{…,key:'month'}],elimSkus,inv}`（`inv={src,tag,asOf,cat,listing}`，值 = `[库存,7DMS,天数]`，天数可为 `"∞"`）。加粒度 = 新写 `build_data_*.py` + `MODES` 加一行，模板零改动；`MODES[0]` 为默认。
 - **模板粒度无关**：`const DB=__DATA__`+`let D`；`loadMode(key)` 整体换 `D/DEOF/REC/NREC/U/UNAME/TWIN`；`switchMode`=loadMode+重渲染+回顶。`unit/unitName/trendWin`(周4/月6) 驱动文案；`state.pidx` 当前期。
   ⚠️ 切粒度必须重置 `pidx/site/drill/hide/hideAux/top`；保留 `colW`、`hideCols`。
 - **回归 `build/test_dashboard.js`**（Node 直跑 + 自建 DOM 桩，改模板必跑）。`D` 与 `DB.modes[0]` 同一对象，追加模拟周期后必须还原 `length`；模板串里的 `\n` 写 `\\n`；断言只能用字符串拼接。
@@ -55,10 +55,18 @@
 - **Q4 集中度一句话**：分母 = **`q4ScopeGap()`**（当前筛选 粒度/时间/站点/业务组 下本期**全部记录**的 Σ(f1−a)），**四卡必须同数**（用户 11-11 纠正：不能各表算各的异常项之和）。分子 = TOP N 的 curGap 之和，**N 按维度**：三级分类 `Q4_TOP`=10、Listing `Q4_TOP_DIM`=15（`q4TopN`）；**表格默认行数 = 句中的 N**。再给累计到 40% 的 `k40`（未达则「全部计入仍未到 40%」）。
   文案：「本表 TOP10 加权缺口合计 X 件，占本期当前筛选总加权缺口 Y 件（全部项合计，实际少于预测）的 P%；按缺口从大到小累计，到 TOP k 项即占 40%。」
   对账：墨西哥+收纳组 11.1~11.7 → 9,486.6，主看板业务组表同行 `-9,486.6`。
-- **Q4 四张清单结构（8 列）**：上级维度(BU/三级分类) | 名称 | **负责人** | 加权预测 | 订单销量 | 加权缺口 | 近N期占比/达成 | 判定。colgroup `10/15/12/9/9/10/19/16`、`min-width:830px`、空态 `colspan=8`。
+- **Q4 四张清单结构（11 列）**：上级维度(BU/三级分类) | 名称 | **负责人** | 加权预测 | 订单销量 | 加权缺口 | **FBA总可销售展示库存 | 7DMS | 可售天数** | 近N期占比/达成 | 判定。colgroup `8/13/7/7/7/7/11/5.5/6.5/15/13`、`min-width:1140px`、空态 `colspan=11`。
+  ⚠️ `table.q4t th` 必须 `white-space:normal`（新表头 10 字，fixed 布局下 nowrap 会撑破）；「近N期占比」列**至少 15%**，否则 4 个百分比粘连成 `10.1%9.7%9.0%6.0%`。1280 视口会横向滚动（可接受），1600 完整。
   负责人 = 该项下 **Σf1 最大的业务负责人**，跨多个时名字 + `<i class="q4auxn">+N</i>`（title 说明）；`td.q4own` 左对齐 12px 省略号。
   判定三档：① `allLow && falling`（逐期不高于上期）② `allLow` ③ `halfLow`；按缺口降序，同值以加权预测、名称决胜。
-- **Q4 每表可单独导出 CSV**：卡片头 `.q4exp`（`data-q4exp="kind:dim"`）→ `exportQ4CSV()` → 纯函数 `q4CSV()`（测试直接断言）。导出**当前筛选完整清单**（不受展开影响）；列 = 上级维度/名称/**负责人**/加权预测/订单销量/加权缺口/每期一列/判定；数值用屏幕格式（`fmtN`、`fmtGap`）与画面逐格对上；带 `\uFEFF` BOM。**不要再给维度板块加常驻趋势图**（做过被否）。
+- **Q4 库存三列（FBA总可销售展示库存 / 7DMS / 可售天数）**：数据源 `E:/ziel浏览器下载/MX&BR冲坑周跟进-W44.xlsx`，
+  三级分类取「5.三级分类」E 列（国家 A 列=MX）、值取 BF-BH；国家Listing 取「6.Listing」G 列（国家=MX）、值取 BV-BX；**表头都在第 4 行**。
+  `build_inventory.py` → `inventory.json` → `data_all.json.inv`；模板 `INV` / `invScopeMx()` / `invOf()` / `invNum()`。
+  🔴 **只有 MX 口径**：全部站点/墨西哥站显示数值，**选巴西站三列全显示「—」**。
+  ⚠️ 一个三级分类可能跨 BU 拆成多行（边桌/床头柜/斗柜/多场景置物架/玄关桌/简易衣柜）→ 库存与 7DMS **相加**、天数 = 库存÷7DMS **重算**（天数不能相加）；
+  天数会出现字符串 **「∞」**（7DMS=0 但有库存）原样显示；Listing sheet 有 357 行国家为空、284 行 BR，**必须按国家=MX 过滤**。
+  命中率：三级分类 103/104、MX listing 608/634（未命中多为合并编码 `KKI009/15` 与状态词）→ 显示「—」，不做模糊匹配。
+- **Q4 每表可单独导出 CSV**：卡片头 `.q4exp`（`data-q4exp="kind:dim"`）→ `exportQ4CSV()` → 纯函数 `q4CSV()`（测试直接断言）。导出**当前筛选完整清单**（不受展开影响）；列 = 上级维度/名称/**负责人**/加权预测/订单销量/加权缺口/**库存三列**/每期一列/判定（共 `9+周期数+1`）；数值用屏幕格式（`fmtN`、`fmtGap`、`invNum`）与画面逐格对上；带 `\uFEFF` BOM。**不要再给维度板块加常驻趋势图**（做过被否）。
 - **Q4 视图**：`applyQ4View()` 只认明确信号 —— hash 前缀 `q4`→进、空 hash→出、其它 hash→维持现状（`on=now`）。目录点击偏移读 `--nav-gap`，兜底用 `window.scrollTo`（⚠️ 别改 hash，否则一次点击被踢回主看板）。
 - 左侧目录：8 维度+站点，scroll spy；尺寸别改小：列宽 206px、项 14px、序号 12px、标题 12px、项 padding `10px 12px`、卡片 `15px 12px 12px`、选中条 4px `left:-12px`（=卡片 padding-left，需同步）、<1180px 隐藏。
 - 站点 KPI 固定 7 列一行（`repeat(7,minmax(0,1fr))`，别 auto-fit 否则 6+1）；≤1000px 才退回 auto-fit。

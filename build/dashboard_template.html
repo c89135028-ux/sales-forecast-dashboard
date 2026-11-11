@@ -472,9 +472,9 @@ body.q4-only .sidenav .navi .nt{white-space:normal;overflow:visible;text-overflo
   font-size:11.5px;font-weight:600;color:var(--muted);cursor:pointer;white-space:nowrap}
 .q4exp:hover{color:var(--accent);border-color:#cfdcfb;background:#f4f7fd}
 .q4tw{overflow:auto}
-table.q4t{width:100%;min-width:830px;border-collapse:collapse;table-layout:fixed}
+table.q4t{width:100%;min-width:1140px;border-collapse:collapse;table-layout:fixed}
 table.q4t th{font-size:11px;font-weight:600;color:var(--muted);background:#f7f9fd;text-align:center;
-  padding:6px 5px;border-bottom:1px solid var(--line2);white-space:nowrap}
+  padding:6px 5px;border-bottom:1px solid var(--line2);white-space:normal;line-height:1.35;text-wrap:balance}
 table.q4t td{font-size:12.5px;padding:6px 5px;border-bottom:1px solid var(--line2);text-align:center;
   font-variant-numeric:tabular-nums;color:var(--ink2)}
 table.q4t tr:last-child td{border-bottom:0}
@@ -486,6 +486,8 @@ table.q4t td.q4aux{text-align:left;padding-left:12px;color:var(--muted);font-siz
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 table.q4t td.q4own{text-align:left;padding-left:8px;color:var(--muted);font-size:12px;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 库存三列（FBA总可销售展示库存 / 7DMS / 可售天数）：辅助信息，压低对比度 */
+table.q4t td.q4iv{color:#5b6a86;font-size:12px;white-space:nowrap}
 .q4auxn{font-style:normal;font-size:10px;color:var(--muted);background:#f0f3f8;border-radius:4px;
   padding:0 4px;margin-left:4px}
 .q4seq{white-space:nowrap;font-size:0}
@@ -510,7 +512,7 @@ table.q4t td.q4own{text-align:left;padding-left:8px;color:var(--muted);font-size
 }
 @media (max-width:1080px){
   .q4grid{padding:0 10px 12px}
-  table.q4t{min-width:680px}
+  table.q4t{min-width:980px}
 }
 
 </style>
@@ -1969,6 +1971,29 @@ function q4Window(){
   const out=[]; for(let i=start;i<=end;i++) out.push(i); return out;
 }
 /* 按维度项汇总窗口内每期的 (加权预测, 70%-130%预测量, 订单销量)，再按上面三档规则筛出异常项 */
+/* ---------- Q4 库存三列（FBA总可销售展示库存 / 7DMS / 可售天数） ----------
+   数据来自「MX&BR冲坑周跟进」表，只有墨西哥站（MX）口径：
+   全部站点 / 墨西哥站显示数值，选巴西站时三列统一显示「—」。
+   三级分类取「5.三级分类」的 E 列（国家=MX），国家Listing 取「6.Listing」的 G 列（国家=MX）。 */
+const INV = (DB && DB.inv) || {cat:{}, listing:{}};
+function invScopeMx(){
+  if(state.site==='ALL') return true;
+  const s = D.sites[state.site];
+  if(!s) return false;
+  return /MX/i.test(String(s.name||'') + ' ' + String(s.code||''));
+}
+function invOf(dimKey, name){
+  if(!invScopeMx()) return null;
+  const map = dimKey==='国家Listing' ? INV.listing : (dimKey==='三级分类' ? INV.cat : null);
+  if(!map) return null;
+  return map[name] || null;
+}
+/* 可售天数源表里会直接给「∞」（7DMS=0 但仍有库存），原样显示 */
+function invNum(v, d){
+  if(v==null || v==='') return '—';
+  if(typeof v==='string') return v;
+  return String(+(+v).toFixed(d));
+}
 function q4Rows(kind, dimKey){
   const cfg=Q4_CFG[kind], field=DIDX[dimKey], per=q4Window(), ps=new Set(per);
   /* 上级维度：三级分类看它的 BU，国家Listing 看它所属的三级分类（按加权预测取最大者，多个标 +N） */
@@ -2021,7 +2046,8 @@ function q4Rows(kind, dimKey){
     }
     out.push({idx, name:D.dims[dimKey][idx], series, tier, curF1, curA,
               curGap: curF1 - curA,          // 加权预测缺口 = 销售预测(加权) − 订单销量（本期）
-              auxName, auxMore, ownName, ownMore, winF1:m.f1});
+              auxName, auxMore, ownName, ownMore, winF1:m.f1,
+              inv: invOf(dimKey, D.dims[dimKey][idx])});   // [库存, 7DMS, 可售天数] 或 null
   });
   /* 异常里优先展示缺口大的：本期加权预测缺口 desc → 本期加权预测 desc → 名称 */
   out.sort((a,b)=> b.curGap-a.curGap || b.curF1-a.curF1 || String(a.name).localeCompare(String(b.name),'zh'));
@@ -2087,13 +2113,16 @@ function q4CardHTML(kind, dimKey, rows, per, idx, scopeGap){
       <td>${fmtN(r.curF1,1)}</td>
       <td>${fmtN(r.curA||0,1)}</td>
       <td><span class="gapv ${r.curGap>0?'gapup':(r.curGap<0?'gapdown':'gapzero')}" title="加权预测缺口 = 销售预测(加权) − 订单销量；绿色＝实际少于预测（显示为 -）、红色＝实际超出预测（显示为 +）">${fmtGap(r.curGap)}</span></td>
+      <td class="q4iv">${r.inv ? fmtN(r.inv[0],0) : '—'}</td>
+      <td class="q4iv">${r.inv ? invNum(r.inv[1],2) : '—'}</td>
+      <td class="q4iv">${r.inv ? invNum(r.inv[2],1) : '—'}</td>
       <td class="q4seq">${r.series.map(v=> v==null
           ? '<span class="na">—</span>'
           : `<span class="${v<cfg.thrAll?'lo':'ok'}">${(v*100).toFixed(1)}%</span>`).join('')}</td>
       <td><span class="q4tag t${r.tier}" title="${esc(tierTip(r.tier, per))}">${tierTxt(r.tier, per)}</span></td>
     </tr>`;
   }).join('')
-    : `<tr><td colspan="8" class="q4empty">当前筛选下没有符合条件的${DIM_LABEL[dimKey]||dimKey}</td></tr>`;
+    : `<tr><td colspan="11" class="q4empty">当前筛选下没有符合条件的${DIM_LABEL[dimKey]||dimKey}</td></tr>`;
   const pr = q4Pareto(rows, scopeGap, N);
   const sumLine = pr
     ? `本表 TOP${Math.min(N, rows.length)} 加权缺口合计 <b>${fmtN(pr.top10,1)}</b> 件，占本期当前筛选总加权缺口 <b>${fmtN(pr.total,1)}</b> 件（全部项合计，实际少于预测）的 <i>${(pr.p10*100).toFixed(1)}%</i>；`
@@ -2108,14 +2137,19 @@ function q4CardHTML(kind, dimKey, rows, per, idx, scopeGap){
     <div class="q4sum">${sumLine}</div>
     <div class="q4tw"><table class="q4t">
       <colgroup>
-        <col style="width:10%"><col style="width:15%"><col style="width:12%"><col style="width:9%">
-        <col style="width:9%"><col style="width:10%"><col style="width:19%"><col style="width:16%">
+        <col style="width:8%"><col style="width:13%"><col style="width:7%"><col style="width:7%">
+        <col style="width:7%"><col style="width:7%"><col style="width:11%"><col style="width:5.5%">
+        <col style="width:6.5%"><col style="width:15%"><col style="width:13%">
       </colgroup>
       <thead><tr>
         <th style="text-align:left;padding-left:12px">${auxLabel}</th>
         <th style="text-align:left;padding-left:8px">${DIM_LABEL[dimKey]||dimKey}</th>
         <th style="text-align:left;padding-left:8px">负责人</th>
-        <th>加权预测</th><th>订单销量</th><th>加权缺口</th><th>${seqHead}</th><th>判定</th></tr></thead>
+        <th>加权预测</th><th>订单销量</th><th>加权缺口</th>
+        <th title="墨西哥站（MX）FBA 总可销售展示库存">FBA总可销售展示库存</th>
+        <th title="墨西哥站（MX）近 7 天日均销量">7DMS</th>
+        <th title="墨西哥站（MX）可售天数 = 总可销售展示库存 ÷ 7DMS">可售天数</th>
+        <th>${seqHead}</th><th>判定</th></tr></thead>
       <tbody>${body}</tbody></table></div>
     ${rest>0 || more ? `<button class="q4more" data-q4more="${key}">${more? '收起 ▴' : `展开其余 ${rest} 项 ▾`}</button>` : ''}
   </div>`;
@@ -2129,7 +2163,8 @@ function q4CSV(key){
   const cfg = Q4_CFG[parts[0]] || {}, dimKey = parts[1];
   const per = q4Window();
   const auxLabel = dimKey==='国家Listing' ? '三级分类' : 'BU';
-  const head = [auxLabel, DIM_LABEL[dimKey]||dimKey, '负责人', '加权预测','订单销量','加权缺口']
+  const head = [auxLabel, DIM_LABEL[dimKey]||dimKey, '负责人', '加权预测','订单销量','加权缺口',
+                'FBA总可销售展示库存','7DMS','可售天数']
     .concat(per.map(p=> D.periods[p].label)).concat(['判定']);
   const q = v => '"' + String(v==null?'':v).replace(/"/g,'""') + '"';
   const lines = [head.map(q).join(',')];
@@ -2137,7 +2172,9 @@ function q4CSV(key){
     const aux = r.auxName ? (r.auxName + (r.auxMore? ' +'+r.auxMore : '')) : '';
     /* 数值一律用屏幕上看到的那套格式（千分位 + 缺口的正负号），保证导出与画面逐格对得上 */
     const own = r.ownName ? (r.ownName + (r.ownMore? ' +'+r.ownMore : '')) : '';
-    const cells = [aux, r.name, own, fmtN(r.curF1,1), fmtN(r.curA,1), fmtGap(r.curGap)]
+    const iv = r.inv;   // 库存三列：与画面同格式（库存整数、7DMS 两位、天数一位/∞）
+    const cells = [aux, r.name, own, fmtN(r.curF1,1), fmtN(r.curA,1), fmtGap(r.curGap),
+                   iv? fmtN(iv[0],0) : '', iv? invNum(iv[1],2) : '', iv? invNum(iv[2],1) : '']
       .concat(r.series.map(v=> v==null ? '' : (v*100).toFixed(1)+'%'))
       .concat([tierTxt(r.tier, per)]);
     lines.push(cells.map(q).join(','));
@@ -2194,7 +2231,8 @@ function renderQ4(){
     note.innerHTML = `<b>判定</b>（按本期<b>加权预测缺口</b> = 销售预测(加权) − 订单销量，从大到小排列；默认展示：三级分类前 ${q4TopN('三级分类')} 项、国家Listing 前 ${q4TopN('国家Listing')} 项，同一项命中多档取序号靠前一档）：
       <b>① 连续${per.length}${U}不达且无改善</b> ｜ <b>② 连续${per.length}${U}不达</b> ｜ <b>③ 一半及以上不达</b>（≥ ${half} ${U}）。
       阈值：占比异常 ①② &lt; 35%、③ &lt; 30%；达成异常 ①②③ &lt; 90%。
-      <b>无改善</b>= 逐期持续下降（每期都不高于上一期，中途无回暖；持平算未改善，回升才算打破趋势）；占比序列为「加权版70%-130%预测量 ÷ 该项销售预测(加权)」。`;
+      <b>无改善</b>= 逐期持续下降（每期都不高于上一期，中途无回暖；持平算未改善，回升才算打破趋势）；占比序列为「加权版70%-130%预测量 ÷ 该项销售预测(加权)」。
+      <br><b>库存三列</b>（FBA总可销售展示库存 / 7DMS / 可售天数）为<b>墨西哥站（MX）</b>口径，数据源${INV.src?`「${esc(INV.src)}」`:'「MX&BR冲坑周跟进」'}${INV.tag?`（维度更新 ${esc(INV.tag)}${INV.asOf?`，数据日期 ${esc(INV.asOf)}`:''}）`:''}；<b>选巴西站时三列显示「—」</b>。可售天数 = 总可销售展示库存 ÷ 7DMS，∞ 表示 7DMS 为 0 但仍有库存；同一三级分类跨 BU 拆成多行时，库存与 7DMS 相加、天数重算。`;
   }
   const blocks=[['share','三级分类'],['share','国家Listing'],['rate','三级分类'],['rate','国家Listing']];
   /* 同一个维度项在「占比异常」和「达成异常」两张清单里可能都命中，入口数字按维度项去重 */

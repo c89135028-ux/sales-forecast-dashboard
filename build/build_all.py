@@ -16,6 +16,7 @@ PY = sys.executable
 STEPS = [
     ('周报数据  build_data.py',       ['build_data.py']),
     ('月报数据  build_data_month.py', ['build_data_month.py']),
+    ('库存三列  build_inventory.py',  ['build_inventory.py']),
     ('合并      merge_data.py',       ['merge_data.py']),
     ('生成看板  build_html.py',       ['build_html.py']),
 ]

@@ -10,3 +10,9 @@ dist/
 # Python
 __pycache__/
 *.pyc
+
+# 无头浏览器截图校验时产生的临时缓存与截图
+.edgetmp*/
+_q4*.png
+_shot*.png
+_probe.html

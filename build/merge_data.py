@@ -43,10 +43,21 @@ def main():
     else:
         print('巴西淘汰清单缺失，跳过:', ELIM_PATH)
 
+    # 库存三列（FBA总可销售展示库存 / 7DMS / 可售天数），只有 MX 口径，由 build_inventory.py 生成
+    INV_PATH = BUILD / 'inventory.json'
+    inv = {}
+    if INV_PATH.exists():
+        inv = json.loads(INV_PATH.read_text(encoding='utf-8'))
+        print(f"库存数据: 三级分类 {len(inv.get('cat', {}))} 项｜Listing {len(inv.get('listing', {}))} 项"
+              f"｜{inv.get('tag') or '-'} / {inv.get('asOf') or '-'}")
+    else:
+        print('库存数据缺失，跳过:', INV_PATH)
+
     payload = {
         'builtAt': pd.Timestamp.now().strftime('%Y-%m-%d %H:%M'),
         'modes': modes,
         'elimSkus': elimSkus,
+        'inv': inv,
     }
     OUT.write_text(json.dumps(payload, ensure_ascii=False, separators=(',', ':')), encoding='utf-8')
     print('written:', OUT, OUT.stat().st_size, 'bytes')
