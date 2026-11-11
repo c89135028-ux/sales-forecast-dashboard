@@ -375,6 +375,26 @@ table.wide td.rt:hover .rchip{box-shadow:0 0 0 2px rgba(47,91,215,.28)}
 .tpop .tp-x:hover{background:#f4f7fd;color:var(--accent);border-color:#cfdcfb}
 .tpop .tleg{margin-top:5px}
 .tpop #tpChart{margin-top:2px}
+/* Q4 名称点击 → 表格式的预测达成（行=周期，列=各口径）
+   列宽交给浏览器按内容自适应 + 表头不折行：11 列固定 px 很难算准，长表头容易掉字换行。 */
+.tpop .tp-box.tp-wide{width:min(1280px,100%)}
+.tpop .tp-tblwrap{margin-top:10px;border:1px solid var(--line);border-radius:10px;overflow:auto;max-height:64vh}
+table.tp-tbl{width:100%;border-collapse:separate;border-spacing:0;
+  font-size:12.5px;font-variant-numeric:tabular-nums}
+table.tp-tbl thead th{position:sticky;top:0;z-index:2;background:#f4f7fd;color:#44557a;font-weight:700;
+  font-size:11.5px;line-height:1.35;padding:9px 10px;text-align:center;border-bottom:1px solid var(--line);
+  white-space:normal;text-wrap:balance}   /* 必须显式写回：全局 thead th 是 nowrap，会让整表撑到 max-content 并溢出弹窗；
+                                             balance 让窄屏折行时两行均分，避免「成」「量」这类单字尾行 */
+table.tp-tbl tbody td{padding:8px 10px;text-align:center;border-bottom:1px solid var(--line2);color:var(--ink);
+  white-space:nowrap}
+table.tp-tbl tbody tr:last-child td{border-bottom:0}
+table.tp-tbl tbody tr:nth-child(even){background:#fbfcfe}
+table.tp-tbl tbody tr.cur{background:#eef4ff}
+table.tp-tbl tbody tr.cur td{font-weight:700}
+table.tp-tbl td.tp-p{text-align:left;color:var(--muted);font-weight:600}
+table.tp-tbl tbody tr.cur td.tp-p{color:var(--accent)}
+table.tp-tbl td.tp-b{color:#44557a;font-weight:600}
+.tpop .tp-lg{margin-top:8px}
 svg{display:block;width:100%;height:auto}
 .bar-lbl{font-size:10.5px;fill:#77869f}
 .axis-lbl{font-size:10.5px;fill:#98a5bd}
@@ -398,6 +418,101 @@ footer .fh{font-size:13px;font-weight:700;color:var(--ink2);margin-bottom:4px}
   h1{font-size:18px}
   .frow{gap:14px}
 }
+/* ---------- Q4 冲销异常 ---------- */
+/* 筛选栏右侧的快捷入口：显示当前筛选下命中的异常项数，点击跳到 Q4 板块 */
+.q4jump{margin-left:auto;display:flex;flex-direction:column;align-items:flex-start;gap:1px;
+  border:1px solid #dfe6f5;background:#fff;border-radius:10px;padding:4px 12px;cursor:pointer;
+  font-family:inherit;transition:border-color .15s,box-shadow .15s,background .15s;
+  box-shadow:0 1px 2px rgba(21,32,58,.04)}
+.q4jump:hover{border-color:var(--accent);background:#fbfcff;box-shadow:0 2px 8px rgba(47,91,215,.14)}
+.q4jump .q4j-t{display:flex;align-items:center;gap:5px;font-size:12.5px;font-weight:700;color:var(--ink);white-space:nowrap}
+.q4jump .q4j-t::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--accent);flex:0 0 auto}
+.q4jump .q4j-n{font-size:11px;color:var(--muted);white-space:nowrap}
+.q4jump .q4j-n b{color:var(--accent);font-weight:700}
+@media (max-width:860px){
+  .q4jump{margin-left:0;width:100%;flex-direction:row;align-items:center;justify-content:space-between;gap:10px}
+}
+/* ---- Q4 独立页面视图 ----
+   同一份 HTML、同一个看板，靠 URL 的 #q4 切到「Q4 冲销异常」这一页：
+   主看板里不占位置（不排在板块流末尾），Q4 页里只留它自己。 */
+body:not(.q4-only) #q4Block{display:none}
+body.q4-only .main>section.block:not(#q4Block){display:none}
+body.q4-only .q4jump{display:none}
+body.q4-only .sub{display:none}
+body.q4-only .drillbar{display:none}
+body.q4-only #q4Block .bnum{display:none}
+body.q4-only #q4Block h2{font-size:19px}
+.q4back{display:none;font-size:12.5px;color:var(--accent);text-decoration:none;
+  border:1px solid var(--accent-soft);background:var(--accent-soft);border-radius:8px;
+  padding:5px 12px;white-space:nowrap}
+.q4back:hover{background:#fff;border-color:var(--accent)}
+body.q4-only .q4back{display:inline-flex;align-items:center;gap:4px}
+/* Q4 四张清单也可作为锚点（目录 href="#q4c-N"），跳转时同样避开粘性筛选栏 */
+#q4Block .q4card{scroll-margin-top:var(--nav-gap,96px)}
+/* Q4 目录标签较长（「占比异常 · 国家Listing」），允许换行而不是省略号 */
+body.q4-only .sidenav .navi{align-items:flex-start}
+body.q4-only .sidenav .navi .nt{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.35;font-size:13.5px}
+.q4note{padding:0 16px 10px;font-size:12px;color:var(--muted);line-height:1.75}
+.q4note b{color:var(--ink2);font-weight:600}
+.q4grid{display:grid;grid-template-columns:1fr;gap:12px;padding:0 16px 16px}
+.q4card{border:1px solid var(--line);border-radius:12px;background:#fff;display:flex;flex-direction:column;min-width:0;
+  box-shadow:0 1px 2px rgba(21,32,58,.04);overflow:hidden}
+.q4h{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line2);
+  background:linear-gradient(180deg,#fbfcff,#fff)}
+.q4h b{font-size:13px;font-weight:700;color:var(--ink)}
+.q4h .q4sub{font-size:11.5px;color:var(--accent);background:var(--accent-soft);border-radius:5px;padding:1px 6px;white-space:nowrap}
+.q4h .q4n{margin-left:auto;font-size:11.5px;color:var(--muted);white-space:nowrap}
+/* 每张清单表格上方的「缺口集中度」一句话 */
+.q4sum{padding:9px 12px 8px;font-size:12px;line-height:1.6;color:var(--muted);
+  background:#fafbfe;border-bottom:1px solid var(--line2)}
+.q4sum b{color:var(--ink);font-weight:700;font-variant-numeric:tabular-nums}
+.q4sum i{font-style:normal;color:var(--accent);font-weight:700}
+.q4exp{flex:none;display:inline-flex;align-items:center;gap:4px;height:23px;padding:0 9px;
+  border:1px solid var(--line);background:#fff;border-radius:7px;font-family:inherit;
+  font-size:11.5px;font-weight:600;color:var(--muted);cursor:pointer;white-space:nowrap}
+.q4exp:hover{color:var(--accent);border-color:#cfdcfb;background:#f4f7fd}
+.q4tw{overflow:auto}
+table.q4t{width:100%;min-width:830px;border-collapse:collapse;table-layout:fixed}
+table.q4t th{font-size:11px;font-weight:600;color:var(--muted);background:#f7f9fd;text-align:center;
+  padding:6px 5px;border-bottom:1px solid var(--line2);white-space:nowrap}
+table.q4t td{font-size:12.5px;padding:6px 5px;border-bottom:1px solid var(--line2);text-align:center;
+  font-variant-numeric:tabular-nums;color:var(--ink2)}
+table.q4t tr:last-child td{border-bottom:0}
+table.q4t td.q4rk{color:var(--muted);font-size:11.5px}
+table.q4t td.q4nm{text-align:left;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+table.q4t td.q4clk{cursor:pointer}
+table.q4t td.q4clk:hover{color:var(--accent);text-decoration:underline;text-underline-offset:2px}
+table.q4t td.q4aux{text-align:left;padding-left:12px;color:var(--muted);font-size:12px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+table.q4t td.q4own{text-align:left;padding-left:8px;color:var(--muted);font-size:12px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.q4auxn{font-style:normal;font-size:10px;color:var(--muted);background:#f0f3f8;border-radius:4px;
+  padding:0 4px;margin-left:4px}
+.q4seq{white-space:nowrap;font-size:0}
+.q4seq span{display:inline-block;width:25%;min-width:0;font-size:11.5px;text-align:center}
+.q4seq .lo{color:var(--down);font-weight:700}
+.q4seq .ok{color:var(--up)}
+.q4seq .na{color:#b8c1d0}
+.q4tag{display:inline-block;font-size:10.5px;border-radius:5px;padding:0 6px;line-height:1.75;white-space:nowrap}
+.q4tag.t1{background:#e6f6ee;color:#0d6f4a;font-weight:700}
+.q4tag.t2{background:#eef6f1;color:#2c8a63}
+.q4tag.t3{background:#f2f4f8;color:#77869f}
+.q4more{padding:8px;border:0;border-top:1px dashed var(--line);background:#fbfcff;color:var(--accent);
+  font-size:12px;cursor:pointer;font-family:inherit}
+.q4more:hover{background:var(--accent-soft)}
+.q4empty{padding:18px 12px!important;color:var(--muted);font-size:12px;text-align:center!important}
+/* 列宽用百分比，随卡片宽度自适应：宽屏时序列/判定一起舒展，不会被名称列吃掉 */
+@media (max-width:1360px){
+  table.q4t th, table.q4t td{padding:5px 4px}
+  table.q4t th{font-size:10.5px}
+  .q4seq span{font-size:11px}
+  .q4tag{font-size:10px;padding:0 5px}
+}
+@media (max-width:1080px){
+  .q4grid{padding:0 10px 12px}
+  table.q4t{min-width:680px}
+}
+
 </style>
 </head>
 <body>
@@ -421,6 +536,10 @@ footer .fh{font-size:13px;font-weight:700;color:var(--ink2);margin-bottom:4px}
       <div class="fgroup"><label>站点</label><div class="chips" id="siteChips"></div></div>
       <div class="fgroup" id="elimGroup" style="display:none"><label>SKU状态</label><div class="chips" id="elimChips"></div></div>
       <div class="fgroup"><label>业务组</label><div class="chips" id="bizChips"></div></div>
+      <button class="q4jump" id="q4Jump" type="button" title="跳到最下方的 Q4冲销异常 板块（数字为当前筛选下的异常项数）">
+        <span class="q4j-t">Q4冲销异常</span>
+        <span class="q4j-n" id="q4JumpN">—</span>
+      </button>
     </div>
     <div class="drillbar" id="drillBar"></div>
   </div>
@@ -454,6 +573,16 @@ footer .fh{font-size:13px;font-weight:700;color:var(--ink2);margin-bottom:4px}
   <section class="block" data-dim="三级分类"></section>
   <section class="block" data-dim="国家Listing"></section>
   <section class="block" data-dim="SKU"></section>
+
+  <section class="block" id="q4Block">
+    <div class="block-head">
+      <div class="btitle"><span class="bnum">09</span><h2>Q4冲销异常</h2>
+        <span class="cnt" id="q4Scope"></span></div>
+      <a class="q4back" id="q4Back" title="回到预测达成看板">&larr; 返回预测达成看板</a>
+    </div>
+    <div class="q4note" id="q4Note"></div>
+    <div class="q4grid" id="q4Grid"></div>
+  </section>
 
   <footer>
     <div class="fh">口径与说明</div>
@@ -541,7 +670,7 @@ function loadMode(key){
     }
   }
   state.pidx = D.periods.length-1;
-  state.site = 'ALL'; state.bizGroup = 'ALL'; state.elim = 'ALL'; state.drill = {}; state.hide = {}; state.hideAux = {}; state.top = {}; state.trendIdx = state.trendIdx || 'mRate';
+  state.site = 'ALL'; state.bizGroup = 'ALL'; state.elim = 'ALL'; state.drill = {}; state.hide = {}; state.hideAux = {}; state.top = {}; state.q4more = {}; state.trendIdx = state.trendIdx || 'mRate';
   state.sort = {}; DIM_KEYS.forEach(k=>{ state.sort[k] = {k:'a', dir:-1}; });   // 默认各表都按订单销量从高到低
   state.sort['_site'] = {k:'a', dir:-1};
   document.title = `拉美销售预测达成看板`;
@@ -1086,8 +1215,8 @@ function closeTrendPop(){
   const el = document.getElementById('tpop');
   if(el){ el.hidden = true; el.innerHTML = ''; }
 }
-function openTrendPop(dim, name, metric){
-  trendPop = {dim:dim, name:name, metric: metric || 'mRate'};
+function openTrendPop(dim, name, metric, kind){
+  trendPop = {dim:dim, name:name, metric: metric || 'mRate', kind: kind || 'trend'};
   renderTrendPop();
 }
 function renderTrendPop(){
@@ -1095,6 +1224,7 @@ function renderTrendPop(){
   if(!el) return;
   if(!trendPop){ el.hidden=true; el.innerHTML=''; return; }
   const dim=trendPop.dim, name=trendPop.name;
+  if(trendPop.kind==='table'){ renderQ4PopTable(el, dim, name); return; }   // Q4 名称点击：表格式预测达成
   const mk = RATE_TREND[trendPop.metric] || RATE_TREND.mRate;
   const ps = trendPeriods();
   el.hidden = false;
@@ -1116,6 +1246,71 @@ function renderTrendPop(){
   const box = document.getElementById('tpChart');
   const w = (box.clientWidth||0) > 320 ? box.clientWidth : 820;
   box.innerHTML = trendSVG(r=>D.dims[dim][r[DIDX[dim]]]===name, ps, w, mk);
+  document.getElementById('tpClose').onclick = ()=>closeTrendPop();
+}
+
+/* Q4 表格里点名称：弹出「表格式」的预测达成（列与主看板维度表一致，行 = 近 N 期） */
+function renderQ4PopTable(el, dim, name){
+  const ps = trendPeriods();
+  const mk = DIDX[dim];
+  const rows = ps.map(p=>{
+    const t = sumRecs(recsFor({pIdx:p}).filter(r=> D.dims[dim][r[mk]]===name));
+    return {p:p, t:t};
+  });
+  const chip = v => (v==null)
+    ? '<span class="rchip none">—</span>'
+    : `<span class="rchip ${rateTier(v)}">${(v*100).toFixed(1)}%</span>`;
+  /* 加权版 70%-130% 占比：分子 = 该项命中的预测量，分母 = 该项自身的销售预测(加权)，与主表同口径。
+     弹窗只有 4~6 行，占比普遍只有 5%~20%，画进度条会短到看不见，这里直接给百分比数字。 */
+  const shareCell = o => {
+    const bs = bandShare(o);
+    if(bs==null) return '<span class="rchip none">—</span>';
+    const tip = `加权版 70%-130% 预测量 ${fmtN(o.f1q,1)} 件 ÷ 该项销售预测(加权) ${fmtN(o.f1,1)} 件 = ${fmtPct(bs)}`;
+    return `<span title="${esc(tip)}">${fmtPct(bs)}</span>`;
+  };
+  /* 缺口：与主表同口径同符号 —— 实际不足显示「-」、超出预测显示「+」，正=绿 / 负=红 */
+  const gapCell = (v, tip) => {
+    const cls = v>0 ? 'gapup' : (v<0 ? 'gapdown' : 'gapzero');
+    return `<span class="gapv ${cls}" title="${esc(tip)}">${fmtGap(v)}</span>`;
+  };
+  el.hidden = false;
+  el.innerHTML = `<div class="tp-box tp-wide">
+    <div class="tp-hd">
+      <span class="tp-dim">${esc(DIM_LABEL[dim])}</span>
+      <span class="tp-nm">${esc(prettyName(dim, name))}</span>
+      <span class="tp-sub">· ${U}度预测达成 · 近 ${ps.length} ${U}（${D.periods[ps[0]].short} – ${D.periods[ps[ps.length-1]].short}）</span>
+      <i class="sp"></i>
+      <span class="tp-metric">预测达成</span>
+      <button class="tp-x" id="tpClose" title="关闭（Esc）">✕</button>
+    </div>
+    <div class="tp-tblwrap"><table class="tp-tbl">
+      <thead><tr>
+        <th style="text-align:left;padding-left:10px">周期</th>
+        <th>M版达成</th>
+        <th>加权达成</th>
+        <th>销售预测（最新版）</th>
+        <th>销售预测（加权）</th>
+        <th>订单销量</th>
+        <th>M版订单预测缺口</th>
+        <th>加权订单预测缺口</th>
+        <th>加权版70%-130%的预测量</th>
+        <th>预测量占比</th>
+      </tr></thead>
+      <tbody>${rows.map(r=>`<tr class="${r.p===state.pidx?'cur':''}">
+        <td class="tp-p">${D.periods[r.p].label}</td>
+        <td>${chip(MET.mRate(r.t))}</td>
+        <td>${chip(MET.wRate(r.t))}</td>
+        <td>${fmtN(r.t.f4,1)}</td>
+        <td>${fmtN(r.t.f1,1)}</td>
+        <td><b>${fmtN(r.t.a)}</b></td>
+        <td>${gapCell(MET.mGap(r.t), `销售预测(最新版) ${fmtN(r.t.f4,1)} − 订单销量 ${fmtN(r.t.a)}`)}</td>
+        <td>${gapCell(MET.wGap(r.t), `销售预测(加权) ${fmtN(r.t.f1,1)} − 订单销量 ${fmtN(r.t.a)}`)}</td>
+        <td>${fmtN(r.t.f1q,1)}</td>
+        <td class="tp-b">${shareCell(r.t)}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>
+    <div class="tleg tp-lg">${TIER_LEGEND}</div>
+  </div>`;
   document.getElementById('tpClose').onclick = ()=>closeTrendPop();
 }
 
@@ -1739,7 +1934,7 @@ function renderTopMeta(){
   document.getElementById('footNotes').innerHTML = `
     <div>· <b>达成率</b>：M版达成 = 订单销量 ÷ 销售预测(最新版)；M-1版达成 = 订单销量 ÷ 销售预测(M-1)；加权达成 = 订单销量 ÷ 销售预测(加权)。</div>
     <div>· <b>断货清洗达成率</b>：M版 = 断货清洗-销售预测(最新版) ÷ 销售预测(最新版)；加权 = 断货清洗-销售预测 ÷ 销售预测(加权)。大于 100% 表示断货清洗后预测被抬高。</div>
-    <div>· <b>缺口</b>（单位：件）：M版订单预测缺口 = 销售预测(最新版) − 订单销量；M版断货清洗缺口 = 销售预测(最新版) − 断货清洗-销售预测(最新版)；加权断货清洗缺口 = 销售预测(加权) − 断货清洗-销售预测。<b>正值代表未达成预测</b>（缺口，绿色），<b>负值代表高于预测</b>（超出，红色）——与上方达成率的颜色含义保持一致。</div>
+    <div>· <b>缺口</b>（单位：件）：M版订单预测缺口 = 销售预测(最新版) − 订单销量；M版断货清洗缺口 = 销售预测(最新版) − 断货清洗-销售预测(最新版)；加权订单预测缺口 = 销售预测(加权) − 订单销量；加权断货清洗缺口 = 销售预测(加权) − 断货清洗-销售预测。<b>正值代表未达成预测</b>（缺口，绿色），<b>负值代表高于预测</b>（超出，红色）——与上方达成率的颜色含义保持一致。</div>
     <div>· <b>加权版70%-130%的预测量</b> = 单品层面加权达成率（该 SKU 订单销量 ÷ 该 SKU 销售预测(加权)）落在 70%~130% 区间的 SKU，其「销售预测(加权)」之和；<b>预测量占比</b> = 该值 ÷ <b>该项自身的销售预测(加权)</b>——分母随行变化：站点行除以该站点、业务组行除以该业务组、三级分类行除以该三级分类（悬停可另看占整体的份额）。</div>
     <div>· <b>${U}度趋势图</b>默认展示截至所选${U}的最近 ${TWIN} ${U}（数据不足时按现有${U}数）。折线指标可在标题右侧下拉自由切换，柱状会与所选指标口径联动：M版达成 → 订单销量 / 销售预测(最新版)；加权达成 → 订单销量 / 销售预测(加权)；M版断货清洗达成率 → 断货清洗-预测(最新版) / 销售预测(最新版)；加权断货清洗达成率 → 断货清洗-预测 / 销售预测(加权)；加权版70%-130%预测量占比 → 70%-130%预测量 / 销售预测(加权)。右侧比率轴随指标量级自适应。</div>
     <div>· <b>环比</b> = 与上一${U}（同站点、同下钻条件下）订单销量对比；第一${U}无环比显示「—」。达成率环比以 pp（百分点）展示。</div>
@@ -1747,11 +1942,287 @@ function renderTopMeta(){
     <div>· <b>占比</b> = 该维度项订单销量 ÷ 当前筛选（${U} + 站点 + 下钻）范围内的总订单销量。</div>
     <div>· <b>SKU</b> 为该筛选范围内按「预测 SKU」精确去重的数量（同一 SKU 归属多个维度组合时不重复计入）；<b>明细行</b> 为底层记录条数。订单销量为空值的明细行按 0 计。</div>
     <div>· <b>层级说明</b>：业务组 ⊃ BU ⊃ 产品组 为严格包含关系；负责人、三级分类、国家Listing、SKU 为四个独立视角（同一三级分类可能跨多个负责人 / listing）；SKU 行为「最早SKU ｜ 预测SKU」组合，两者一一对应，各板块按所选${U} / 站点独立汇总，因此板块合计口径一致、口径可对齐。</div>
+    <div>· <b>Q4冲销异常</b>：取所选${U}（含）往前最近 4 个${U}为观察窗口，随站点、业务组筛选联动，按本期<b>加权预测缺口</b>（销售预测(加权) − 订单销量，即「加权订单预测缺口」同口径）从大到小排列，缺口大的优先展示；每张清单默认展示前 10 项、可展开全部。判定分三档，同一项命中多档时取序号靠前的一档：<b>① 连续4${U}不达且无改善</b> = 窗口内每期都低于阈值、且逐期持续下降（每期都不高于上一期，中途无回暖）；<b>② 连续4${U}不达</b> = 每期都低于阈值，但中途出现回升；<b>③ 一半及以上不达</b> = 窗口内至少一半${U}低于阈值。阈值：<b>占比异常</b> ①② &lt; 35%、③ &lt; 30%；<b>达成异常</b> ①②③ &lt; 90%。占比序列 = 加权版70%-130%预测量 ÷ 该项销售预测(加权)。</div>
     <div>· <b>筛选联动</b>：站点选择「全部站点」时，站点卡片与趋势图并排展示两个站点；只选单个站点时仅展示该站点数据。</div>
     <div>· 数据源：${esc(D.source)}；筛选条件：${esc(D.filter)}；看板生成时间：${esc(D.builtAt)}。</div>`;
 }
+/* ================= Q4 冲销异常 =================
+   两块异常清单（加权版70%-130%占比异常 / 加权达成异常）× 两个维度（三级分类 / 国家Listing）。
+   跟随「粒度 + 周期 + 站点 + 业务组」变化；窗口固定为最近 4 个周期（周报 4 周 / 月报 4 月）。
+   判定分级（同一项命中多档时取最靠前的一档）：
+     ① 连续4期不达且无改善：窗口内每期都低于阈值，且逐期持续下降（每期都不高于上一期，中途无回暖）
+     ② 连续4期不达：窗口内每期都低于阈值，但中途出现回升
+     ③ 一半及以上不达：窗口内 ≥ 半数周期低于阈值（占比用更严的阈值）                */
+const Q4_WIN = 4;      // 近 4 周 / 近 4 月
+const Q4_TOP = 10;     // 三级分类清单默认展示前 10 项
+/* 国家Listing 基数大（几百条），TOP10 只占两成不到，默认展示与「集中度」都算到 TOP15 */
+const Q4_TOP_DIM = {'国家Listing':15};
+function q4TopN(dimKey){ return Q4_TOP_DIM[dimKey] || Q4_TOP; }
+const Q4_CFG = {
+  share: { label:'加权版70%-130%占比异常', thrAll:0.35, thrHalf:0.30,
+           val:b=> b.f1>0 ? b.f1q/b.f1 : null, sub:'占比', ruleA:'< 35%', ruleB:'< 30%' },
+  rate:  { label:'加权达成异常',           thrAll:0.90, thrHalf:0.90,
+           val:b=> b.f1>0 ? b.a/b.f1 : null,   sub:'达成', ruleA:'< 90%', ruleB:'< 90%' }
+};
+function q4Window(){
+  const n=D.periods.length, end=Math.min(state.pidx, n-1), start=Math.max(0, end-(Q4_WIN-1));
+  const out=[]; for(let i=start;i<=end;i++) out.push(i); return out;
+}
+/* 按维度项汇总窗口内每期的 (加权预测, 70%-130%预测量, 订单销量)，再按上面三档规则筛出异常项 */
+function q4Rows(kind, dimKey){
+  const cfg=Q4_CFG[kind], field=DIDX[dimKey], per=q4Window(), ps=new Set(per);
+  /* 上级维度：三级分类看它的 BU，国家Listing 看它所属的三级分类（按加权预测取最大者，多个标 +N） */
+  const AUX = ({'三级分类':'BU','国家Listing':'三级分类'})[dimKey];
+  /* DIDX 的值是字段名字符串（如 'b'），不是数字下标 */
+  const auxField = AUX!=null && DIDX[AUX]!=null ? DIDX[AUX] : null;
+  const agg=new Map();
+  for(let i=0;i<NREC;i++){
+    const r=REC[i];
+    if(state.site!=='ALL' && r.s!==state.site) continue;
+    if(state.bizGroup!=='ALL' && r.g!==state.bizGroup) continue;
+    if(!ps.has(r.w)) continue;
+    let m=agg.get(r[field]);
+    if(!m){ m={f1:0, byP:new Map(), aux:null}; agg.set(r[field], m); }
+    m.f1+=r.f1;
+    let b=m.byP.get(r.w); if(!b){ b={f1:0,f1q:0,a:0}; m.byP.set(r.w,b); }
+    b.f1+=r.f1; b.f1q+=r.f1q; b.a+=r.a;
+    if(auxField!=null){
+      if(!m.aux) m.aux=new Map();
+      m.aux.set(r[auxField], (m.aux.get(r[auxField])||0) + r.f1);
+    }
+    /* 业务负责人：同一个三级分类 / Listing 可能跨多个负责人，按加权预测取最大者，其余标 +N */
+    if(!m.own) m.own=new Map();
+    m.own.set(r.o, (m.own.get(r.o)||0) + r.f1);
+  }
+  const out=[];
+  agg.forEach((m, idx)=>{
+    const series=per.map(p=>{ const b=m.byP.get(p); return b? cfg.val(b) : null; });
+    const got=series.filter(v=>v!=null);
+    if(got.length<2) return;                                  // 有效点太少，不参与判定
+    const allLow = got.length===series.length && got.every(v=>v<cfg.thrAll);
+    const halfLow = got.filter(v=>v<cfg.thrHalf).length*2 >= per.length;
+    /* 「持续下降」= 逐期比较，每期都不高于上一期（中途任何一次回升就不算） */
+    const falling = got.every((v,i)=> i===0 || v <= got[i-1]);
+    const tier = allLow ? (falling?1:2) : (halfLow?3:0);
+    if(!tier) return;
+    const cur = m.byP.get(state.pidx) || {f1:0, a:0};
+    const curF1 = cur.f1||0, curA = cur.a||0;
+    let auxName='', auxMore=0;
+    if(m.aux && m.aux.size){
+      const arr=[...m.aux.entries()].sort((x,y)=> y[1]-x[1]);
+      auxName = D.dims[AUX][arr[0][0]];
+      auxMore = m.aux.size - 1;
+    }
+    let ownName='', ownMore=0;
+    if(m.own && m.own.size){
+      const oarr=[...m.own.entries()].sort((x,y)=> y[1]-x[1]);
+      ownName = D.dims['业务负责人'][oarr[0][0]];
+      ownMore = m.own.size - 1;
+    }
+    out.push({idx, name:D.dims[dimKey][idx], series, tier, curF1, curA,
+              curGap: curF1 - curA,          // 加权预测缺口 = 销售预测(加权) − 订单销量（本期）
+              auxName, auxMore, ownName, ownMore, winF1:m.f1});
+  });
+  /* 异常里优先展示缺口大的：本期加权预测缺口 desc → 本期加权预测 desc → 名称 */
+  out.sort((a,b)=> b.curGap-a.curGap || b.curF1-a.curF1 || String(a.name).localeCompare(String(b.name),'zh'));
+  return out;
+}
+/* 三档判定文案：① 连续不达且无改善 ② 连续不达 ③ 一半及以上不达（周期单位随粒度走） */
+function tierTxt(tier, per){
+  const n = per.length;
+  if(tier===1) return `连续${n}${U}不达且无改善`;
+  if(tier===2) return `连续${n}${U}不达`;
+  return '一半及以上不达';
+}
+function tierTip(tier, per){
+  const n = per.length;
+  if(tier===1) return `近 ${n} ${U}每期都低于阈值，且逐期持续下降（每期都不高于上一期，中途无回暖）`;
+  if(tier===2) return `近 ${n} ${U}每期都低于阈值，但中途出现回升，故排在第二档`;
+  return `近 ${n} ${U}中有一半及以上的${U}低于阈值`;
+}
+/* 当前筛选（粒度/时间/站点/业务组）下「本期」的整体加权缺口 = Σ(销售预测(加权) − 订单销量)。
+   这是全口径总和，与按哪个维度拆无关 —— 四张清单共用同一个数，才对得上主看板的加权订单预测缺口。 */
+function q4ScopeGap(){
+  let g=0;
+  for(let i=0;i<NREC;i++){
+    const r=REC[i];
+    if(state.site!=='ALL' && r.s!==state.site) continue;
+    if(state.bizGroup!=='ALL' && r.g!==state.bizGroup) continue;
+    if(r.w!==state.pidx) continue;
+    g += r.f1 - r.a;
+  }
+  return g;
+}
+/* 缺口集中度：分母统一用「当前筛选整体加权缺口」，算 TOP10 占比 + 累计到多少项达到 40% */
+function q4Pareto(rows, total, n){
+  const t = (total==null) ? rows.reduce((s,r)=> s + (r.curGap||0), 0) : total;
+  if(!(t>0)) return null;
+  const topN = rows.slice(0, n||Q4_TOP).reduce((s,r)=> s + (r.curGap||0), 0);
+  let cum=0, k=0;
+  for(let i=0;i<rows.length;i++){
+    cum += (rows[i].curGap||0);
+    if(cum >= t*0.4){ k=i+1; break; }
+  }
+  return { total: t, top10: topN, topN: n||Q4_TOP, p10: topN/t, k40: k };
+}
+function q4CardHTML(kind, dimKey, rows, per, idx, scopeGap){
+  const N = q4TopN(dimKey);
+  const cfg=Q4_CFG[kind], key=kind+':'+dimKey;
+  const more = !!(state.q4more && state.q4more[key]);
+  const show = more ? rows : rows.slice(0, N);
+  const rest = rows.length - show.length;
+  const auxLabel = dimKey==='国家Listing' ? '三级分类' : 'BU';
+  const seqHead = `近${per.length}${U}${cfg.sub}`;
+  const body = show.length ? show.map(r=>{
+    const aux = r.auxName
+      ? `${esc(r.auxName)}${r.auxMore ? `<i class="q4auxn" title="该项跨 ${r.auxMore+1} 个${auxLabel}，此处按加权预测取最大者">+${r.auxMore}</i>` : ''}`
+      : '—';
+    const own = r.ownName
+      ? `${esc(r.ownName)}${r.ownMore ? `<i class="q4auxn" title="该项跨 ${r.ownMore+1} 个业务负责人，此处按加权预测取最大者">+${r.ownMore}</i>` : ''}`
+      : '—';
+    return `<tr>
+      <td class="q4aux" title="${esc(r.auxName||'')}">${aux}</td>
+      <td class="q4nm q4clk" data-q4dim="${dimKey}" data-q4name="${esc(r.name)}" title="点击查看「${esc(r.name)}」的预测达成趋势">${esc(r.name)}</td>
+      <td class="q4own" title="${esc(r.ownName||'')}">${own}</td>
+      <td>${fmtN(r.curF1,1)}</td>
+      <td>${fmtN(r.curA||0,1)}</td>
+      <td><span class="gapv ${r.curGap>0?'gapup':(r.curGap<0?'gapdown':'gapzero')}" title="加权预测缺口 = 销售预测(加权) − 订单销量；绿色＝实际少于预测（显示为 -）、红色＝实际超出预测（显示为 +）">${fmtGap(r.curGap)}</span></td>
+      <td class="q4seq">${r.series.map(v=> v==null
+          ? '<span class="na">—</span>'
+          : `<span class="${v<cfg.thrAll?'lo':'ok'}">${(v*100).toFixed(1)}%</span>`).join('')}</td>
+      <td><span class="q4tag t${r.tier}" title="${esc(tierTip(r.tier, per))}">${tierTxt(r.tier, per)}</span></td>
+    </tr>`;
+  }).join('')
+    : `<tr><td colspan="8" class="q4empty">当前筛选下没有符合条件的${DIM_LABEL[dimKey]||dimKey}</td></tr>`;
+  const pr = q4Pareto(rows, scopeGap, N);
+  const sumLine = pr
+    ? `本表 TOP${Math.min(N, rows.length)} 加权缺口合计 <b>${fmtN(pr.top10,1)}</b> 件，占本期当前筛选总加权缺口 <b>${fmtN(pr.total,1)}</b> 件（全部项合计，实际少于预测）的 <i>${(pr.p10*100).toFixed(1)}%</i>；`
+      + (pr.k40
+          ? `按缺口从大到小累计，到 <b>TOP ${pr.k40}</b> 项即占 <i>40%</i>。`
+          : `本表 ${rows.length} 项全部计入仍未到 <i>40%</i>。`)
+    : `本期当前筛选的总加权缺口为 0，暂无可比口径。`;
+  return `<div class="q4card"${idx!=null?` id="q4c-${idx}"`:''}>
+    <div class="q4h"><b>${cfg.label}</b><span class="q4sub">${DIM_LABEL[dimKey]||dimKey}</span>
+      <span class="q4n">${rows.length} 项</span>
+      <button class="q4exp" type="button" data-q4exp="${key}" title="导出本表全部 ${rows.length} 项为 CSV（跟随当前筛选）">⬇ 导出</button></div>
+    <div class="q4sum">${sumLine}</div>
+    <div class="q4tw"><table class="q4t">
+      <colgroup>
+        <col style="width:10%"><col style="width:15%"><col style="width:12%"><col style="width:9%">
+        <col style="width:9%"><col style="width:10%"><col style="width:19%"><col style="width:16%">
+      </colgroup>
+      <thead><tr>
+        <th style="text-align:left;padding-left:12px">${auxLabel}</th>
+        <th style="text-align:left;padding-left:8px">${DIM_LABEL[dimKey]||dimKey}</th>
+        <th style="text-align:left;padding-left:8px">负责人</th>
+        <th>加权预测</th><th>订单销量</th><th>加权缺口</th><th>${seqHead}</th><th>判定</th></tr></thead>
+      <tbody>${body}</tbody></table></div>
+    ${rest>0 || more ? `<button class="q4more" data-q4more="${key}">${more? '收起 ▴' : `展开其余 ${rest} 项 ▾`}</button>` : ''}
+  </div>`;
+}
+/* 导出：每张清单单独导出 CSV（导出当前筛选下的完整清单，不受「展开/收起」影响）。
+   文本生成抽成纯函数 q4CSV()，便于回归测试直接断言内容。 */
+let q4Last = {};
+function q4CSV(key){
+  const rows = q4Last[key] || [];
+  const parts = String(key).split(':');
+  const cfg = Q4_CFG[parts[0]] || {}, dimKey = parts[1];
+  const per = q4Window();
+  const auxLabel = dimKey==='国家Listing' ? '三级分类' : 'BU';
+  const head = [auxLabel, DIM_LABEL[dimKey]||dimKey, '负责人', '加权预测','订单销量','加权缺口']
+    .concat(per.map(p=> D.periods[p].label)).concat(['判定']);
+  const q = v => '"' + String(v==null?'':v).replace(/"/g,'""') + '"';
+  const lines = [head.map(q).join(',')];
+  rows.forEach(r=>{
+    const aux = r.auxName ? (r.auxName + (r.auxMore? ' +'+r.auxMore : '')) : '';
+    /* 数值一律用屏幕上看到的那套格式（千分位 + 缺口的正负号），保证导出与画面逐格对得上 */
+    const own = r.ownName ? (r.ownName + (r.ownMore? ' +'+r.ownMore : '')) : '';
+    const cells = [aux, r.name, own, fmtN(r.curF1,1), fmtN(r.curA,1), fmtGap(r.curGap)]
+      .concat(r.series.map(v=> v==null ? '' : (v*100).toFixed(1)+'%'))
+      .concat([tierTxt(r.tier, per)]);
+    lines.push(cells.map(q).join(','));
+  });
+  return '\uFEFF' + lines.join('\n');
+}
+function exportQ4CSV(key){
+  const rows = q4Last[key] || [];
+  if(!rows.length) return;
+  const parts = String(key).split(':');
+  const cfg = Q4_CFG[parts[0]] || {}, dimKey = parts[1];
+  const blob = new Blob([q4CSV(key)], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${state.mode}_${(D.periods[state.pidx]||{}).iso||''}_Q4_${cfg.label||''}_${DIM_LABEL[dimKey]||dimKey}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+function renderQ4(){
+  const host=document.getElementById('q4Grid'); if(!host) return;
+  if(!host.dataset.bound){
+    host.addEventListener('click', ev=>{
+      /* 点维度名称 → 弹出该项的「预测达成」趋势（订单销量 vs 加权预测 + 加权达成率折线） */
+      const nm=ev.target.closest('[data-q4name]');
+      if(nm){
+        if(typeof textSelecting==='function' && textSelecting()) return;   // 拖选/全选复制时不弹窗
+        openTrendPop(nm.dataset.q4dim, nm.dataset.q4name, 'wRate', 'table');
+        return;
+      }
+      const b=ev.target.closest('[data-q4more]');
+      if(b){
+        state.q4more=state.q4more||{};
+        const k=b.dataset.q4more; state.q4more[k]=!state.q4more[k];
+        renderQ4();
+        return;
+      }
+      const ex=ev.target.closest('[data-q4exp]');
+      if(ex) exportQ4CSV(ex.dataset.q4exp);
+    });
+    host.dataset.bound='1';
+  }
+  const per=q4Window();
+  const sc=document.getElementById('q4Scope');
+  if(sc){
+    const siteTxt = state.site==='ALL' ? '全部站点' : D.sites[state.site].name;
+    const grpTxt  = state.bizGroup==='ALL' ? '全部业务组' : D.dims['业务组'][state.bizGroup];
+    const range   = per.length ? `${D.periods[per[0]].label} ~ ${D.periods[per[per.length-1]].label}` : '—';
+    sc.textContent = `· ${UNAME} · ${siteTxt} · ${grpTxt} · ${range}`;
+  }
+  const note=document.getElementById('q4Note');
+  if(note){
+    const half=Math.ceil(per.length/2);
+    note.innerHTML = `<b>判定</b>（按本期<b>加权预测缺口</b> = 销售预测(加权) − 订单销量，从大到小排列；默认展示：三级分类前 ${q4TopN('三级分类')} 项、国家Listing 前 ${q4TopN('国家Listing')} 项，同一项命中多档取序号靠前一档）：
+      <b>① 连续${per.length}${U}不达且无改善</b> ｜ <b>② 连续${per.length}${U}不达</b> ｜ <b>③ 一半及以上不达</b>（≥ ${half} ${U}）。
+      阈值：占比异常 ①② &lt; 35%、③ &lt; 30%；达成异常 ①②③ &lt; 90%。
+      <b>无改善</b>= 逐期持续下降（每期都不高于上一期，中途无回暖；持平算未改善，回升才算打破趋势）；占比序列为「加权版70%-130%预测量 ÷ 该项销售预测(加权)」。`;
+  }
+  const blocks=[['share','三级分类'],['share','国家Listing'],['rate','三级分类'],['rate','国家Listing']];
+  /* 同一个维度项在「占比异常」和「达成异常」两张清单里可能都命中，入口数字按维度项去重 */
+  const hit={'三级分类':new Set(), '国家Listing':new Set()};
+  const scopeGap = q4ScopeGap();      // 四张清单一律用同一个「整体加权缺口」作分母
+  host.innerHTML = blocks.map(([k,d],i)=>{
+    const rows=q4Rows(k,d);
+    q4Last[k+':'+d]=rows;                 // 导出用：当前筛选下的完整清单
+    rows.forEach(r=> hit[d].add(r.idx));
+    return q4CardHTML(k, d, rows, per, i, scopeGap);
+  }).join('');
+  const jn=document.getElementById('q4JumpN');
+  if(jn) jn.innerHTML = `三级分类 <b>${hit['三级分类'].size}</b> · Listing <b>${hit['国家Listing'].size}</b>`;
+}
+
 /* ---------- 左侧目录导航 ---------- */
+/* Q4 页面用自己的目录：四张清单（卡片 id 由 renderQ4 按顺序生成 q4c-0..3） */
+function q4NavRows(){
+  return [
+    {sel:'#q4c-0', no:'01', label:'占比异常 · 三级分类'},
+    {sel:'#q4c-1', no:'02', label:'占比异常 · 国家Listing'},
+    {sel:'#q4c-2', no:'03', label:'达成异常 · 三级分类'},
+    {sel:'#q4c-3', no:'04', label:'达成异常 · 国家Listing'}
+  ];
+}
 function navRows(){
+  const isQ4 = document.body && document.body.classList && document.body.classList.contains('q4-only');
+  if(isQ4) return q4NavRows();
   return [{sel:'#mainSite', no:'01', label:'站点整体表现'}].concat(
     DIM_KEYS.map((k,i)=>({sel:`[data-dim="${k}"]`, no:String(i+2).padStart(2,'0'), label:DIM_LABEL[k]}))
   );
@@ -1789,16 +2260,16 @@ function renderNav(){
       const r=rows[+a.dataset.i];
       const target=r && document.querySelector(r.sel);
       if(!target) return;
-      const top=Math.max(0, Math.round(target.getBoundingClientRect().top + window.scrollY - 10));
+      // 目标点要避开粘性筛选栏：与 section.block 的 scroll-margin-top 用同一个 --nav-gap
+      const gap=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--nav-gap')) || 96;
+      const top=Math.max(0, Math.round(target.getBoundingClientRect().top + window.scrollY - gap));
       const startY=window.scrollY;
-      window.scrollTo({top, behavior:'smooth'});
-      // 兜底：若平滑滚动完全没生效（个别环境/超长距离），退回原生锚点跳转
+      window.scrollTo({top:top, behavior:'smooth'});
+      // 兜底：平滑滚动完全没动（个别环境）就直接瞬时跳过去。
+      // ⚠️ 不能用 location.hash —— hash 变成页内锚点后，Q4 页会误判成「离开 Q4」而被踢回主看板。
       setTimeout(()=>{
-        if(window.scrollY===startY && Math.abs(startY-top)>80){
-          const href=a.getAttribute('href');
-          if(href) location.hash=href.slice(1); else window.scrollTo(0, top);
-        }
-      }, 350);
+        if(Math.abs(window.scrollY-startY)<4 && Math.abs(startY-top)>80) window.scrollTo(0, top);
+      }, 600);
     };
   });
   syncNavTop();
@@ -1841,10 +2312,45 @@ const tpopEl = document.getElementById('tpop');
 if(tpopEl) tpopEl.addEventListener('click', ev=>{ if(ev.target===tpopEl) closeTrendPop(); });
 document.addEventListener('keydown', ev=>{ if(ev.key==='Escape' && trendPop) closeTrendPop(); });
 
+/* Q4 页面视图：同一份看板，用 URL 的 #q4 切到独立页面；主看板里不占板块流位置。
+   入口 = 同一标签内切页（地址栏变化，可前进/后退）；返回链接回到主看板。 */
+const Q4_TITLE_MAIN = document.title;
+let _booted = false;
+function applyQ4View(){
+  const body = document.body;
+  if(!body || !body.classList) return;         // 测试桩等无 body 的环境直接跳过
+  const loc = (typeof window!=='undefined' && window.location) ? window.location : {hash:''};
+  const h = (loc.hash || '').replace(/^#/,'');
+  const now = body.classList.contains('q4-only');
+  /* 只有「明确的信号」才切页：q4 / q4c-N（Q4 页内锚点）进 Q4 页；空 hash 回主看板。
+     其余 hash（#nav-sec-3 这类主看板锚点）一律维持当前视图 ——
+     否则目录点击/锚点兜底会把 Q4 页直接踢回主看板。 */
+  let on;
+  if(/^q4/.test(h)) on = true;
+  else if(h==='') on = false;
+  else on = now;
+  body.classList.toggle('q4-only', on);
+  document.title = on ? ('Q4冲销异常 · ' + Q4_TITLE_MAIN) : Q4_TITLE_MAIN;
+  if(on && !now) window.scrollTo(0, 0);
+  if(_booted && now!==on){
+    if(typeof closeTrendPop==='function') closeTrendPop();   // 切视图时别把弹窗留在另一个页面
+    renderNav();                                            // 目录随视图切换（主目录 ⇄ Q4 四张清单）
+  }
+}
+const q4BackEl = document.getElementById('q4Back');
+if(q4BackEl) q4BackEl.href = '#';
+const q4JumpEl = document.getElementById('q4Jump');
+if(q4JumpEl) q4JumpEl.addEventListener('click', ()=>{
+  if(typeof window!=='undefined' && window.location) window.location.hash = 'q4';
+  else applyQ4View();
+});
+if(typeof window!=='undefined' && window.addEventListener) window.addEventListener('hashchange', applyQ4View);
+
 function renderAll(){
   renderFilters();
   renderSite();
   DIM_KEYS.forEach(k=>renderDim(blockOf(k)));
+  renderQ4();
   if(trendPop) renderTrendPop();     // 弹窗开着时跟随筛选/下钻一起刷新
 }
 function boot(){
@@ -1853,6 +2359,8 @@ function boot(){
   renderTopMeta();
   renderNav();
   renderAll();
+  _booted = true;
+  applyQ4View();            // 直接带 #q4 打开时，进来就是 Q4 页面 + 它自己的目录
 }
 boot();
 </script>

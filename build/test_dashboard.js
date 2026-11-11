@@ -27,6 +27,15 @@ const mkEl = (key) => ({
 const win = { innerWidth: 1440, innerHeight: 900, addEventListener: () => {}, scrollTo: () => {}, scrollY: 0 };
 const rootEl = { style: { setProperty: () => {} } };
 const registry = {};
+const bodyEl = mkEl('body');
+bodyEl.className = '';
+bodyEl.classList = {
+  _s: new Set(),
+  add(c){ this._s.add(c); bodyEl.className = [...this._s].join(' '); },
+  remove(c){ this._s.delete(c); bodyEl.className = [...this._s].join(' '); },
+  toggle(c, f){ const on = (f === undefined) ? !this._s.has(c) : !!f; on ? this.add(c) : this.remove(c); return on; },
+  contains(c){ return this._s.has(c); },
+};
 const doc = {
   getElementById(id) { return registry['id:' + id] || (registry['id:' + id] = mkEl('id:' + id)); },
   querySelector(sel) {
@@ -38,8 +47,11 @@ const doc = {
   querySelectorAll: () => [],
   addEventListener: () => {},
   documentElement: rootEl,
+  body: bodyEl,
+  title: 'DASH',
   location: { hash: '' },
 };
+win.location = doc.location;   // applyQ4View 读的是 window.location
 const test = `
 /* 最后一个周期索引：在（会向 D.periods 追加模拟周期的）趋势用例之前先取好 */
 const LASTW = D.periods.length-1;
@@ -339,7 +351,7 @@ out.列按钮 = (()=>{
 out.页脚单位 = (()=>{
   const f = store['id:footNotes']||'';
   const bad = UU==='月' ? /周/.test(f.replace(/周报/g,'')) : false;
-  return '页脚含错误单位='+bad+' | 含「'+UU+'度趋势图」='+f.indexOf(UU+'度趋势图')>=0;
+  return '页脚含错误单位='+bad+' | 含「'+UU+'度趋势图」='+(f.indexOf(UU+'度趋势图')>=0);
 })();
 /* 放在最后：会切换粒度并重置筛选状态，避免影响上面的用例 */
 out.粒度切换 = (()=>{
@@ -356,10 +368,14 @@ out.粒度切换 = (()=>{
   const before = snap();
   switchMode(other.key);
   const mid = snap();
+  /* 切粒度后 Q4 判定文案的单位要跟着变（周→月） */
+  const q4Txt = tierTxt(1,[0,1,2,3]);
+  const q4TxtOk = q4Txt === ('连续4'+U+'不达且无改善');
   switchMode(first);
   const back = snap();
-  const ok = mid.mode===other.key && mid.rec===other.recs.length && back.rec===DB.modes[0].recs.length;
+  const ok = mid.mode===other.key && mid.rec===other.recs.length && back.rec===DB.modes[0].recs.length && q4TxtOk;
   return '切换正确='+ok
+    + ' ｜ Q4判定文案(切后)=' + q4Txt + (q4TxtOk?'':' ✕')
     + ' ｜ 初始 ' + JSON.stringify(before)
     + ' ｜ → ' + other.key + ' ' + JSON.stringify(mid)
     + ' ｜ → 切回 ' + first + ' ' + JSON.stringify(back);
@@ -527,12 +543,237 @@ out.加权订单预测缺口 = (()=>{
   }catch(e){ return 'ERR:'+e.message; }
 })();
 
+/* Q4 冲销异常：4 张清单（占比/达成 × 三级分类/Listing）的判定与「跟随筛选」都要对 */
+out.Q4冲销异常 = (()=>{
+  try{
+    const un = t => String(t).replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&amp;/g,'&');
+    const cfgOf = k => k==='share' ? {a:0.35,b:0.30,v:x=> x.f1>0? x.f1q/x.f1 : null}
+                                    : {a:0.90,b:0.90,v:x=> x.f1>0? x.a/x.f1 : null};
+    function ref(kind, dimKey){
+      const cfg=cfgOf(kind), field=dimKey==='三级分类'?'c':'l';
+      const per=[]; const end=Math.min(state.pidx, D.periods.length-1);
+      for(let i=Math.max(0,end-3); i<=end; i++) per.push(i);
+      const map=new Map();
+      for(let i=0;i<NREC;i++){
+        const r=REC[i];
+        if(state.site!=='ALL' && r.s!==state.site) continue;
+        if(state.bizGroup!=='ALL' && r.g!==state.bizGroup) continue;
+        const j=per.indexOf(r.w); if(j<0) continue;
+        let m=map.get(r[field]); if(!m){ m=per.map(()=>({f1:0,f1q:0,a:0})); map.set(r[field],m); }
+        m[j].f1+=r.f1; m[j].f1q+=r.f1q; m[j].a+=r.a;
+      }
+      const out=[];
+      map.forEach((arr, idx)=>{
+        const vals=arr.map(cfg.v), got=vals.filter(v=>v!=null);
+        if(got.length<2) return;
+        const all = got.length===vals.length && got.every(v=>v<cfg.a);
+        const half= got.filter(v=>v<cfg.b).length*2 >= per.length;
+        const fall = got.every((v,i)=> i===0 || v<=got[i-1]);   // 持续下降：每期都不高于上一期
+        const tier= all ? (fall?1:2) : (half?3:0);
+        if(!tier) return;
+        const cur=arr[per.indexOf(state.pidx)];
+        const curF1=cur?cur.f1:0, curA=cur?cur.a:0;
+        /* 每期都低、但中途回暖 —— 用来验证「持续下降」不是只比首尾（这类必须是 ② 而不是 ①） */
+        const midRise = all && !fall;
+        out.push({name:D.dims[dimKey][idx], tier, f1:curF1, gap:curF1-curA, midRise:midRise});
+      });
+      /* 异常里优先展示缺口大的 */
+      out.sort((x,y)=> y.gap-x.gap || y.f1-x.f1 || String(x.name).localeCompare(String(y.name),'zh'));
+      return out;
+    }
+    const cards = () => [...(store['id:q4Grid']||'').split('<div class="q4card"').slice(1)];
+    function parse(card){
+      const out=[];
+      const parts=card.split('<td class="q4nm');
+      for(let i=1;i<parts.length;i++){
+        const seg=parts[i];
+        const name=un(seg.slice(seg.indexOf('>')+1, seg.indexOf('</td>')));
+        const rest=seg.slice(seg.indexOf('</td>')+5);
+        const v0=rest.slice(rest.indexOf('<td>')+4);
+        const f1=+(v0.slice(0, v0.indexOf('</td>')).split(',').join(''))||0;
+        /* 紧随其后是「订单销量」列 */
+        const after1=v0.slice(v0.indexOf('</td>')+5);
+        const aRaw=after1.slice(after1.indexOf('<td>')+4, after1.indexOf('</td>'));
+        const vol=+(aRaw.split(',').join(''))||0;
+        const gpos=rest.indexOf('class="gapv');
+        const gseg=gpos>=0 ? rest.slice(gpos) : '';
+        const gtxt=gseg ? gseg.slice(gseg.indexOf('>')+1, gseg.indexOf('</span>')) : '';
+        const gapShown=gtxt ? (parseFloat(gtxt.replace(/,/g,''))||0) : NaN;
+        const sq=rest.slice(rest.indexOf('class="q4seq">')+14);
+        const seqHtml=sq.slice(0, sq.indexOf('</td>'));
+        const tg=rest.slice(rest.indexOf('q4tag t')+7);
+        out.push({name:name, f1:f1, vol:vol, gapShown:gapShown, seqN:seqHtml.split('<span').length-1, tier:+(tg.slice(0,1)||0)});
+      }
+      return out;
+    }
+    const dims=[['share','三级分类'],['share','国家Listing'],['rate','三级分类'],['rate','国家Listing']];
+
+    state.site='ALL'; state.bizGroup='ALL'; state.q4more={}; state.pidx=LASTW; renderAll();
+    const cs=cards();
+    if(cs.length!==4) return '✕ 卡片数='+cs.length;
+    const det=[]; let allOk=true;
+    dims.forEach((pair,i)=>{
+      const k=pair[0], d=pair[1];
+      const got=parse(cs[i]), exp=ref(k,d);
+      const NTOP=q4TopN(d);
+      const expTop=exp.slice(0,NTOP);
+      /* 顺序要被严格比对：期望榜已按「加权预测缺口 desc → 加权预测 desc → 名称」排好 */
+      const same = got.length===expTop.length
+        && got.every((r,j)=> r.name===expTop[j].name && r.tier===expTop[j].tier);
+      /* 缺口列显示值 = −(加权预测 − 订单销量)，故「缺口降序」= 显示值升序 */
+      let sorted=true; for(let j=1;j<got.length;j++) if(!(got[j-1].gapShown <= got[j].gapShown)) sorted=false;
+      const gapOk = got.length===expTop.length
+        && got.every((r,j)=> Math.abs(r.gapShown - (-expTop[j].gap)) < 0.15);
+      const seqLen = got.every(r=> r.seqN===4);
+      /* 新增列：上级维度（BU / 三级分类）单元格数要对得上；订单销量 = 加权预测 + 缺口显示值 */
+      const auxN = (cs[i].match(/class="q4aux"/g)||[]).length;
+      /* 上级维度不能全是「—」（DIDX 是字段名字符串，容易踩 auxField>=0 恒假的坑） */
+      const auxEmpty = (cs[i].match(/class="q4aux"[^>]*>—</g)||[]).length;
+      const auxOk = auxN === got.length && auxEmpty === 0;
+      const volOk = got.length===expTop.length
+        && got.every(r=> Math.abs(r.vol - (r.f1 + r.gapShown)) < 0.15);
+      const seqHead = k==='share' ? '近4周占比' : '近4周达成';
+      const headOk = cs[i].indexOf('订单销量')>=0 && cs[i].indexOf(seqHead)>=0 && cs[i].indexOf('加权缺口')>=0
+        && cs[i].indexOf('负责人')>=0;
+      /* 负责人列：每行一个，且不能整列都是「—」 */
+      const ownN = (cs[i].match(/class="q4own"/g)||[]).length;
+      const ownEmpty = (cs[i].match(/class="q4own"[^>]*>—</g)||[]).length;
+      const ownOk = ownN === got.length && ownEmpty === 0;
+      /* 「首尾下降但中途回升」的项不能被判成 ①（持续下降） */
+      const midRiseN = exp.filter(e=> e.midRise).length;
+      const noFalseOne = got.every(r=>{
+        const e=expTop.find(x=> x.name===r.name);
+        return !e || !e.midRise || r.tier===2;
+      });
+      if(!(same&&sorted&&gapOk&&seqLen&&noFalseOne&&auxOk&&volOk&&headOk&&ownOk)) allOk=false;
+      det.push(d+'/'+k+' '+got.length+'项'+(same?'':' ✕判定/顺序')+(sorted?'':' ✕缺口排序')+(gapOk?'':' ✕缺口值')+(seqLen?'':' ✕序列长度')+(noFalseOne?'':' ✕中途回升误判①')
+        +(auxOk?'':' ✕上级维度列')+(volOk?'':' ✕订单销量列')+(headOk?'':' ✕表头')+(ownOk?'':' ✕负责人列('+ownN+'/'+got.length+',空'+ownEmpty+')')
+        +(midRiseN?('(中途回升'+midRiseN+'项)'):''));
+    });
+    const exp0=ref('share','三级分类');
+    state.q4more={'share:三级分类':true}; renderQ4();
+    const expanded=parse(cards()[0]).length;
+    const moreBtn=(store['id:q4Grid']||'').indexOf('收起')>=0;
+    state.q4more={}; renderQ4();
+    const collapsed=parse(cards()[0]).length;
+    const siteBak=state.site; state.site=0; renderAll();
+    const ref2=ref('rate','国家Listing');
+    const follow=parse(cards()[3]).length===Math.min(ref2.length,q4TopN('国家Listing'));
+    state.site=siteBak; renderAll();
+    /* 三档判定文案：① 连续N周不达且无改善 ② 连续N周不达 ③ 一半及以上不达 */
+    const w4=[0,1,2,3];
+    const t1=tierTxt(1,w4), t2=tierTxt(2,w4), t3=tierTxt(3,w4);
+    const txtOk = t1==='连续4周不达且无改善' && t2==='连续4周不达' && t3==='一半及以上不达';
+    /* 一个板块一行：q4grid 单列 */
+    const oneCol = /\.q4grid\{display:grid;grid-template-columns:1fr/.test(HTMLTXT);
+    /* 筛选栏入口：数字 = 当前筛选下去重后的异常项数（同一个项可能在占比/达成两张清单都命中） */
+    const jn = store['id:q4JumpN']||'';
+    const jseg = jn.split('<b>');
+    const jm1 = jseg[1] ? parseInt(jseg[1].split('</b>')[0],10) : NaN;
+    const jm2 = jseg[2] ? parseInt(jseg[2].split('</b>')[0],10) : NaN;
+    const expCat = new Set([...ref('share','三级分类'), ...ref('rate','三级分类')].map(e=>e.name)).size;
+    const expLst = new Set([...ref('share','国家Listing'), ...ref('rate','国家Listing')].map(e=>e.name)).size;
+    const jumpOk = jm1===expCat && jm2===expLst && expCat>0;
+    /* 名称可点 → 弹出「表格式」预测达成（行 = 近 N 期；列 = 用户指定的 9 个指标） */
+    const cellOk = (store['id:q4Grid']||'').indexOf('data-q4name=')>=0;
+    let popOk = false;
+    try{
+      openTrendPop('三级分类','衣撑','wRate','table');
+      const tp = store['id:tpop']||'';
+      const need = ['M版达成','加权达成','销售预测（最新版）','销售预测（加权）','订单销量',
+                    'M版订单预测缺口','加权订单预测缺口','加权版70%-130%的预测量','预测量占比'];
+      const hasTh = need.every(s=> tp.indexOf(s)>=0);
+      const nTh = (tp.match(/<th[ >]/g)||[]).length;
+      const hasTbl = tp.indexOf('class="tp-tbl"')>=0 && tp.indexOf('tp-tblwrap')>=0;
+      const nRow = (tp.match(/<td class="tp-p"/g)||[]).length;
+      const nPer = trendPeriods().length;
+      const curRow = (tp.match(/<tr class="cur"/g)||[]).length;
+      /* 同口径核对：弹窗当前期 加权达成 / 预测量占比 / 两个缺口 = 直接按该三级分类聚合算出来的值 */
+      const curT = sumRecs(recsFor({pIdx:state.pidx})
+        .filter(r=> D.dims['三级分类'][r[DIDX['三级分类']]]==='衣撑'));
+      const refM = MET.wRate(curT), refB = bandShare(curT);
+      const cellTxt = refM==null ? '—' : (refM*100).toFixed(1)+'%';
+      /* 缺口列：每行 2 个，符号与主表一致（实际不足为负、超出为正） */
+      const nGap = (tp.match(/class="gapv /g)||[]).length;
+      const gapTxt = fmtGap(MET.wGap(curT));
+      const gapOk = nGap===nPer*2 && (nPer<1 || tp.indexOf(gapTxt)>=0);
+      /* 占比列：纯百分比数字（行少、占比小，不画进度条），取值须与 bandShare 一致 */
+      const bandTxt = fmtPct(refB);
+      const bandOk = refB==null
+        ? tp.indexOf('rchip none')>=0
+        : (tp.indexOf('class="tp-b"')>=0 && tp.indexOf('>'+bandTxt+'<')>=0);
+      popOk = hasTh && nTh===10 && hasTbl && nRow===nPer && nPer>=2 && curRow===1 && bandOk && gapOk
+        && tp.indexOf(cellTxt)>=0 && tp.indexOf('三级分类')>=0 && tp.indexOf('衣撑')>=0;
+      if(popOk!==true) popOk = '表头'+hasTh+' 列数'+nTh+'/'+10+' 表格'+hasTbl+' 行'+nRow+'/'+nPer
+        +' 当前行'+curRow+' 口径'+cellTxt+' 占比'+bandTxt+'('+bandOk+') 缺口'+nGap+'/'+(nPer*2)+'('+gapTxt+')';
+      if(typeof closeTrendPop==='function') closeTrendPop();
+    }catch(e){ popOk = 'ERR:'+e.message; }
+    /* 每张表上方「一句话」：分母 = 当前筛选的整体加权缺口（四张卡必须同一个数） */
+    const grid = store['id:q4Grid']||'';
+    const sumN = (grid.match(/class="q4sum"/g)||[]).length;
+    const expN = (grid.match(/data-q4exp="/g)||[]).length;
+    let scopeG = 0;
+    for(let i=0;i<NREC;i++){
+      const r = REC[i];
+      if(state.site!=='ALL' && r.s!==state.site) continue;
+      if(state.bizGroup!=='ALL' && r.g!==state.bizGroup) continue;
+      if(r.w!==state.pidx) continue;
+      scopeG += r.f1 - r.a;
+    }
+    const rr = ref('share','三级分类');
+    const t10G = rr.slice(0,q4TopN('三级分类')).reduce((s,e)=> s+e.gap, 0);
+    const p10Txt = scopeG>0 ? (t10G/scopeG*100).toFixed(1)+'%' : null;
+    let cumG=0, k40=0;
+    for(let i=0;i<rr.length;i++){ cumG+=rr[i].gap; if(cumG>=scopeG*0.4){ k40=i+1; break; } }
+    /* 国家Listing 维度按 TOP15 算占比 */
+    const rrl = ref('share','国家Listing');
+    const t15G = rrl.slice(0,q4TopN('国家Listing')).reduce((s,e)=> s+e.gap, 0);
+    const p15Txt = scopeG>0 ? (t15G/scopeG*100).toFixed(1)+'%' : null;
+    const sameTotal = (grid.split(fmtN(scopeG,1)).length-1) >= 4;   // 四张卡显示同一个总缺口
+    const sumOk = sumN===4 && expN===4 && p10Txt!=null && p15Txt!=null && sameTotal
+      && grid.indexOf('本表 TOP'+q4TopN('三级分类'))>=0 && grid.indexOf('本表 TOP'+q4TopN('国家Listing'))>=0
+      && grid.indexOf(p10Txt)>=0 && grid.indexOf(p15Txt)>=0
+      && (k40? grid.indexOf('TOP '+k40)>=0 : grid.indexOf('仍未到')>=0);
+    /* CSV 文本：表头 = 上级维度+名称+加权预测+订单销量+加权缺口+每期一列+判定 */
+    const csv = String(q4CSV('share:三级分类'));
+    const cl = csv.split('\\n');
+    const h0 = cl[0].slice(cl[0].indexOf('"'));      // 跳过 BOM，从第一个引号开始
+    const ch = h0.split(',').length;
+    const csvOk = ch === 6 + q4Window().length + 1 && cl.length === rr.length+1
+      && cl[0].indexOf('"加权缺口"')>=0 && cl[0].indexOf('"判定"')>=0 && cl[0].indexOf('"负责人"')>=0;
+    /* 视图切换只认 q4 前缀与空 hash：点 Q4 目录（hash 变成 #q4c-N）不能把 Q4 页踢回主看板 */
+    const viewOk = (()=>{
+      const at = v => { window.location.hash = v; applyQ4View(); return document.body.classList.contains('q4-only'); };
+      const a = at('#q4');        // 进入
+      const b = at('#q4c-2');     // Q4 目录点第 3 张清单
+      const c = at('#nav-sec-3'); // 主看板锚点：维持现状，不误退
+      const d = at('');           // 返回主看板
+      const e = at('#q4');        // 再次进入
+      return { ok: a===true && b===true && c===true && d===false && e===true, txt: [a,b,c,d,e].join('/') };
+    })();
+    const ok = allOk && txtOk && oneCol && jumpOk && cellOk && popOk===true && viewOk.ok
+      && sumOk && csvOk
+      && expanded===exp0.length && collapsed===Math.min(exp0.length,q4TopN('三级分类')) && moreBtn && follow;
+    return det.join(' | ')
+      + ' | 一行一卡=' + oneCol
+      + ' | 筛选栏入口=' + (jumpOk? (expCat+'/'+expLst) : ('✕ '+jn))
+      + ' | 名称弹表格=' + (popOk===true? 'ok' : ('✕ '+popOk))
+      + ' | 视图切换=' + (viewOk.ok? ('ok '+viewOk.txt) : ('✕ '+viewOk.txt))
+      + ' | 集中度一句话=' + (sumOk? ('ok 整体缺口'+fmtN(scopeG,1)+' 三级分类TOP10='+p10Txt+' ListingTOP15='+p15Txt+' TOP'+k40+'达40% 卡片'+sumN+' 导出'+expN)
+                                : ('✕ 卡片'+sumN+'/4 导出'+expN+' 整体'+fmtN(scopeG,1)+' 期望'+p10Txt+'/TOP'+k40+' 同数'+sameTotal))
+      + ' | 导出CSV=' + (csvOk? ('ok 列'+ch+' 行'+(cl.length-1)) : ('✕ 列'+ch+'/期望'+(6+q4Window().length+1)+' 行'+(cl.length-1)+'/'+rr.length))
+      + ' | 判定文案 ' + (txtOk? (t1+' / '+t2+' / '+t3) : ('✕ '+t1+' | '+t2+' | '+t3))
+      + ' | 展开 ' + collapsed + '→' + expanded + '/' + exp0.length + ' 收起按钮=' + moreBtn
+      + ' | 跟随站点筛选=' + follow + (ok?' OK':' ✕');
+  }catch(e){ return 'ERR:'+e.message; }
+})();
+
 console.log(JSON.stringify(out,null,1));
 `;
 
 const GUARD_N = (code.match(/if\(textSelecting\(\)\) return;/g) || []).length;
 try {
-  new Function('document', 'console', 'store', 'window', 'DASH_NAME', 'GUARDN', code + '\n' + test)(doc, console, store, win, DASH, GUARD_N);
+  new Function('document', 'console', 'store', 'window', 'DASH_NAME', 'GUARDN', 'HTMLTXT', code + '\n' + test)(doc, console, store, win, DASH, GUARD_N, html);
   console.log('RUNTIME OK');
 } catch (e) {
   fs.writeFileSync(path.join(__dirname, '_composed_err.js'), code + '\n' + test);

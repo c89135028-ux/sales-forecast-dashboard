@@ -1,97 +1,84 @@
 # 项目长期约定：销售预测达成看板
 
-## 产物与构建
-- **一个交付物：`销售预测达成看板.html`**（单文件、数据内联、零外部依赖，双击可离线打开）。
-  周报 + 月报在同一份看板里，靠筛选栏最左侧「粒度」芯片 [周] [月] 切换（用户明确要求，不拆两个文件）。
-- 🔴 **看板是「滚动窗口」——新数据只追加，绝不整批替换历史**（用户 2026-10-07 纠正：「是滚动你懂吗？把最新数据加上去就行，不是覆盖」）。
-  每批新数据把新表 **append 到 `SRCS` 末尾**；「新表周期 = 已有周期的紧邻延伸 / 子集」都按追加处理，只有用户明说「只要最新」才替换。**遇到歧义要问。**
-  ⚠️ **源表是历史数据的唯一来源**（`data.json` 是聚合结果、无法反解明细），构建时要读，不能让用户清理。
-- 构建链 `build/build_all.py` 一键 4 步：`build_data.py`（周→`data.json`）→ `build_data_month.py`（月→`data_month.json`）→ `merge_data.py`（→`data_all.json`，并注入 `elimSkus`）→ `build_html.py`（模板 + 数据 → 成品 HTML）。
-  单独排查：`build_html.py <data.json> <输出.html>` 可出单粒度版。
-- **多源滚动合并规则**：`SRCS` 列表按顺序读入纵向拼接，**同一「周期」以靠后的源为准（整周期替换）**。
-  实现先算「每个周期的归属源 `owner`」再整周期取该源数据 —— ⚠️ **不能 `drop_duplicates(subset=[时间列])`**，那会把每期只留一行。
-  （周报 `TIME_COL='周首日'`、月报 `'年月'`，两版结构一致。）**加新源前先比型（列集合与顺序必须一致）。**
-- **当前源**：周报 `SRCS` = (21)+(24)+(34)+(36)+(38)+`C:/Users/Thinkpad/Downloads/日明细数据 (1)`+`E:/ziel浏览器下载/日明细数据 (1)` → **11 周**（8/23 ~ 11/01）；
-  月报 `SRCS` = (20)+(25)+(28)+(32)+(35)+(39)+`C:/Users/Thinkpad/Downloads/日明细数据`+`E:/ziel浏览器下载/日明细数据 (2)` → **5 个月**（7~11 月；10 月经多版迭代，11 月为新月）。
-- ⚠️ **源表末行「合计」会把总量翻倍**，必须先剔除 `时间列 == '合计'`。
-- **换源标准动作**：新表 append 到 `SRCS` → `build_all.py` → `verify_data.py`（周+月，须 `ALL CHECKS PASSED`）→ `test_dashboard.js`（须 `RUNTIME OK`）→ `cp` 同步 `index.html` → `git push` → 备份。
-  `verify_data.py` 源表路径与合并规则自动从 build_data*.py 解析；校验 ①(周期,站点) 单元对账 ②维度分组守恒 ③行数+listing 回填覆盖率 ④周期元信息（周：周日/晚6天/周号；月：月初~月末/iso）⑤站点集合。
-- **数据契约**：`data_all.json = {builtAt, modes:[{…, key:'week'}, {…, key:'month'}], elimSkus}`，每个 mode 与单期数据字段一致。
-  加新粒度只需新写 `build_data_*.py` + `merge_data.py` 的 `MODES` 加一行，**模板零改动**；`MODES` 第一条为默认粒度。
-- **模板粒度无关**：`const DB=__DATA__` + `let D`；`loadMode(key)` 整体替换 `D/DEOF/REC/NREC/U/UNAME/TWIN`；`switchMode` = loadMode + 重渲染 + 回顶。
-  `unit`/`unitName`/`trendWin`（周 4、月 6）驱动全部文案；时间轴统一 `periods`（`{date,end,label,iso,short}`），`state.pidx` 为当前周期下标。
-  ⚠️ **切粒度必须重置** `pidx/site/drill/hide/hideAux/top`（否则越界/下钻空集）；**保留** `colW`、`hideCols`。
-- **回归测试 `build/test_dashboard.js`**（Node 直跑，无依赖 DOM 桩，改模板必跑，须 `RUNTIME OK`）。注意 `D` 与 `DB.modes[0]` 是同一对象，往 `D.periods` 追加模拟周期后必须还原 `length`；模板字符串里的 `\n` 要写 `\\n`。
-  **「标签重叠」用例 = 柱值标签相撞自动化守门**：调 pure function `trendSVG`，解析 `.bar-lbl` 的 x/y，判据 `|Δy|<12 且横向区间相交`（Arial 近似字宽×10.5px）；覆盖 站点并排(420/517/700)+单站点满宽(1074/1400)+弹窗(700/794)×2 站点共 13 场景，周报与月报各跑一遍（先当前粒度，再 `switchMode` 后切回），须重叠 0。
-- **备份**：`备份/YYYY-MM-DD_HHmm/` + 同名 zip，不覆盖历史快照。内容 = 交付 HTML + `build/` 全量 + `.workbuddy/memory/*.md`。
-  ⚠️ 环境里**没有 `zip` 命令**，用 Python `zipfile` 打包，且 **arcname 必须相对「快照目录」**（zip 根就是快照内容，不套 `时间戳/` 一层）+ 反斜杠换正斜杠 —— 否则 `verify_backup.py` 解压比对会全部「不一致」。
-  校验 `build/verify_backup.py [时间戳]`（不传参取最新）：zip 完整性 + 解压↔快照 md5 + 显式清单↔工作区 + 快照↔工作区**双向**全量扫描（`_composed_err.js` 在忽略名单）。两方向都 OK 才算过。
-- ⚠️ **Python 环境**：默认 `python` 是 WorkBuddy 自带 3.13，**可能缺 numpy/pandas**（`ModuleNotFoundError: numpy`）→ `python -m pip install numpy pandas` 即可恢复。
-  ⚠️ **pandas 3.x 起 `astype(str)` 不再把 NaN 转成 `'nan'`（NaN 保留为 float）** → `sorted(unique())` 会因 float/str 混排报 `TypeError`。构建里对维度列改用 `fillna(...)` 后再 `astype(str)`；无 SKU 的空行统一剔除（`build_data*.py` 与 `verify_data.py` 用同一规则，否则行数对账差 1）。
+## 产物 / 构建链
+- 单一交付物 `销售预测达成看板.html`（数据内联、零依赖、可离线）。周报+月报同文件，靠筛选栏最左「粒度」芯片 [周][月] 切换（用户要求不拆两个文件）。
+- 🔴 **滚动窗口：新数据只追加，绝不整批替换历史**（用户 10-07 原话「是滚动你懂吗…不是覆盖」）。新表 append 到 `SRCS` 末尾；「紧邻延伸/子集」都按追加，只有明说「只要最新」才替换；**歧义要问**。
+  ⚠️ 源表是历史唯一来源（`data.json` 是聚合结果不能反解），构建要读、不能让用户清理。
+- `build/build_all.py` 一键 4 步：`build_data.py`(周→data.json) → `build_data_month.py`(月→data_month.json) → `merge_data.py`(→data_all.json，注入 elimSkus) → `build_html.py`(模板+数据→HTML)。单粒度排查：`build_html.py <data.json> <out.html>`。
+- **多源合并**：`SRCS` 顺序纵向拼接，同一「周期」以靠后的源为准（整周期替换）。先算每期归属源 `owner` 再整期取 —— ⚠️ 禁用 `drop_duplicates(subset=[时间列])`（会每期只留一行）。周 `TIME_COL='周首日'`、月 `'年月'`。加源前先比型（列集合+顺序一致）。
+- **当前源**：周 = (21)(24)(34)(36)(38)+`C:/Users/Thinkpad/Downloads/日明细数据 (1)`+`E:/ziel浏览器下载/日明细数据 (1)` → 11 周 8/23~11/01（24,566 行）；月 = (20)(25)(28)(32)(35)(39)+`.../日明细数据`+`.../日明细数据 (2)` → 5 月 7~11（11,345 行）。
+- ⚠️ 源表末行「合计」会翻倍总量，先剔除 `时间列=='合计'`。
+- **换源标准动作**：append `SRCS` → `build_all.py` → `verify_data.py`（须 ALL CHECKS PASSED）→ `test_dashboard.js`（须 RUNTIME OK）→ `cp` 同步 index.html → 备份 →（用户同意后）push。
+  verify 自动从 build_data*.py 解析源路径与合并规则；校验 ①(周期,站点)单元对账 ②维度守恒 ③行数+listing 回填覆盖率 ④周期元信息 ⑤站点集合 ⑥[2.5] 每个 BU 唯一归属。
+- **数据契约**：`data_all.json={builtAt,modes:[{…,key:'week'},{…,key:'month'}],elimSkus}`。加粒度 = 新写 `build_data_*.py` + `MODES` 加一行，模板零改动；`MODES[0]` 为默认。
+- **模板粒度无关**：`const DB=__DATA__`+`let D`；`loadMode(key)` 整体换 `D/DEOF/REC/NREC/U/UNAME/TWIN`；`switchMode`=loadMode+重渲染+回顶。`unit/unitName/trendWin`(周4/月6) 驱动文案；`state.pidx` 当前期。
+  ⚠️ 切粒度必须重置 `pidx/site/drill/hide/hideAux/top`；保留 `colW`、`hideCols`。
+- **回归 `build/test_dashboard.js`**（Node 直跑 + 自建 DOM 桩，改模板必跑）。`D` 与 `DB.modes[0]` 同一对象，追加模拟周期后必须还原 `length`；模板串里的 `\n` 写 `\\n`；断言只能用字符串拼接。
+  「标签重叠」用例 = 柱值标签守门：调 pure `trendSVG`，解析 `.bar-lbl` 的 x/y，判据 `|Δy|<12 且横向区间相交`（Arial 字宽×10.5px）；13 场景 × 周/月，须 0。
+- **备份** `备份/YYYY-MM-DD_HHmm/` + 同名 zip（不覆盖历史）。内容 = 交付 HTML + `build/` + `.workbuddy/memory/*.md`。
+  ⚠️ 无 `zip` 命令，用 Python `zipfile`，**arcname 相对快照目录**（zip 根即内容，不套时间戳层）+ 反斜杠换正斜杠，否则 verify 全「不一致」。
+  校验 `build/verify_backup.py [时间戳]`：zip 完整性 + 解压↔快照 md5 + 清单↔工作区 + 双向全量扫描（`_composed_err.js` 忽略）。两向 OK 才过。
+- ⚠️ 默认 `python` 是 WorkBuddy 3.13，可能缺 numpy/pandas → `python -m pip install numpy pandas`。
+  ⚠️ pandas 3.x `astype(str)` 不再把 NaN 变 `'nan'`（留 float）→ `sorted(unique())` 报 TypeError。维度列先 `fillna('')` 再 `astype(str)`；无 SKU 空行统一剔除（构建与 verify 同规则，否则差 1 行）。
 
-## 口径（用户明确给定，勿擅改）
-- 达成率：M版 = 订单销量 ÷ 预测(最新版)；M-1版 ÷ 预测(M-1)；加权 ÷ 预测(加权)；M版断货清洗达成率 = 断货清洗(最新版) ÷ 预测(最新版)；加权断货清洗达成率 = 断货清洗 ÷ 预测(加权)。
-- 缺口 = 预测 − 实际：M版订单预测缺口 = 预测(最新版) − 订单销量；M版断货清洗缺口 = 预测(最新版) − 断货清洗(最新版)；**加权订单预测缺口 = 预测(加权) − 订单销量**（2026-11-10 新增，放在加权断货清洗缺口之前）；加权断货清洗缺口 = 预测(加权) − 断货清洗。
-- 加权 70%-130%：在 **SKU 行粒度**判该 SKU 加权达成率 ∈ [0.7,1.3]，命中则计入其预测(加权)；**占比分母是「本项自身」的预测**（随行变化，非整体）。
-- **站点顺序固定 墨西哥站(MX) → 巴西站(BR)**：`build_data.py` 排序键写死 mx 优先；卡片/chips/趋势/明细表全部跟随 `D.sites`（明细表**不要**再按名称排序）。加站点改排序键。
-- 维度：站点 / 业务组 / BU / 产品组 / 负责人 / 三级分类 / 国家Listing / SKU（SKU = 「最早SKU|预测SKU」，显示拆两列）。
-- **维度口径以最新源为准**：`LATEST_ATTR_SRC`（最新周表+月表）按 `最早SKU` 建映射，覆盖**所有周期**的三级分类/产品组/业务负责人；同 SKU 多取值取出现次数最多者。人员归属会随时间变更，历史行沿用旧值会把同一个人拆成两行。`apply_latest_attrs()` 已同时加在周报与月报脚本，`main()` 开头调用。
-- **业务组 ↔ BU 归属 = 用户给定的固定表**（2026-11-10 明确）：`BU_GROUP` 常量写在 `build_data*.py` 顶部，
-  `衣物收纳BU / 宠物用品BU / 户外休闲BU → 拉美收纳宠户组`，`厨卫&寝具BU / 家具BU / 装饰&桌椅BU → 拉美家具桌椅组`。
-  `apply_bu_group()` 按表**覆盖全部周期**（201 行月报、387 行周报被改；7/8 月 ±33/±153 件、各周 ±25~52 件），未登记的 BU 原样保留并打印提示。
-  **新增 BU 时只需在 `BU_GROUP` 里加一行**（用户会另行告知归属）。
-  `verify_data.py` 的 [2.5] 校验「每个 BU 是否唯一归属」，跨组即 FAIL。
-  历史背景：7/8 月源表里 衣物收纳BU/户外休闲BU 有 6~9% 归家具桌椅组、家具BU 有 9% 归收纳组；8~9 月周表里 `床具产品组(王雅馨)` 约 3% 归收纳组；
-  2026-10 还出现过单行串行（墨西哥站 `JKA011A01` BU=装饰&桌椅BU 但 业务组=收纳宠户组）——现在都被这张表统一覆盖。
-- **listing 回填**：按 **(国家, 最早SKU) 双键**（同 SKU 在巴西/墨西哥编码不同）查 `E:/不重要文件/国家listing对应表.xlsx`；**只补空值，源表已有值一律不动**（源值是同族合并编码，如 `LTB050`、`BRPCT161`，与对应表单 SKU 编码不同也以源表为准）；对应表给「淘汰」等状态词原样显示；补不上才归「（未标注）」。当前周 2 行、月 3 行未标注。
-- **周期数可少至 2**：`trendPeriods()` 的 `end-start<1` 分支自动兜底画 2 点、文案变「· 近 2 周」，不需改模板。
-- 源表缺维度列时的回填只是临时兜底，换回源表口径后必须逐行 diff（实测 (19) 回填导致 业务负责人错 980 行、业务组错 198 行 —— 数值列 0 差异，即偏差出在维度）。
+## 口径（用户给定，勿改）
+- 达成率：M版=a/f4，M-1=a/f3，加权=a/f1，M版断货清洗=f5/f4，加权断货清洗=f2/f1。
+- 缺口=预测−实际：M版订单=f4−a，M版断货清洗=f4−f5，**加权订单=f1−a**（11-10 新增，排在加权断货清洗前），加权断货清洗=f1−f2。
+- 加权 70%-130%：在 **SKU 行粒度**判加权达成率 ∈[0.7,1.3]，命中计入其 f1；**占比分母 = 本项自身预测**。
+- **站点顺序固定 墨西哥(MX) → 巴西(BR)**：`build_data.py` 排序键写死 mx 优先；卡片/chips/趋势/明细表全跟 `D.sites`（明细表别再按名排序）。
+- 维度：站点/业务组/BU/产品组/负责人/三级分类/国家Listing/SKU（SKU=`最早SKU|预测SKU`，显示拆两列）。
+- **维度口径以最新源为准**：`LATEST_ATTR_SRC`（最新周表+月表）按 `最早SKU` 建映射，覆盖所有周期的三级分类/产品组/业务负责人；同 SKU 多值取众数。人员归属会变，沿用旧值会把同一人拆两行。`apply_latest_attrs()` 在 `main()` 开头调用。
+- **业务组↔BU = 用户固定表**：`BU_GROUP`（`build_data*.py` 顶部）衣物收纳/宠物用品/户外休闲BU→拉美收纳宠户组；厨卫&寝具/家具/装饰&桌椅BU→拉美家具桌椅组。`apply_bu_group()` 覆盖全部周期；新 BU 只需加一行；未登记原样保留并打提示。历史上 6~9% 串组，现统一。
+- **listing 回填**：按 **(国家, 最早SKU) 双键** 查 `E:/不重要文件/国家listing对应表.xlsx`；**只补空值，源表已有值不动**（源值是同族合并编码如 LTB050/BRPCT161，与对应表编码不同也以源表为准）；状态词（淘汰）原样显示；补不上归「（未标注）」（当前周 2 行、月 3 行）。
+- 周期数可少至 2：`trendPeriods()` 有 `end-start<1` 兜底（画 2 点、文案「· 近 2 周」）。
+- 源表缺维度列的回填只是临时兜底；换回源表口径后必须逐行 diff（实测 (19) 回填致 负责人错 980 行、业务组错 198 行，数值列 0 差）。
 
-## 视觉与交互约定
-- **红绿语义全页唯一**：红 = 达成/超出预测；绿 = 未达成/落后（缺口为正用绿）。
-- 达成率色阶五档：≥110% 实心深红+白字、100~110% 浅底红、90~100% 浅底橙、80~90% 浅底绿、<80% 实心绿+白字；图例在**每个板块底部各一份**。
-- `fmtGap(v)`：**实际超出预测 → `+`，实际不足 → `-`**（符号与算式值相反）；颜色仍按算式（正=绿、负=红）。右下角说明「绿色＝实际少于预测（-）　红色＝实际超出预测（+）」。环比等变化量保留原 `+`/`-`。
-- 表格 `table-layout:fixed` + `<colgroup>` 固定列宽；表头与数值居中（名称列左对齐、序号居中）。
-- 🔴 **表头文字是用户给定原文，一个字都不许改**（不重排、不加 `<br>`、不缩写）。放不下**只能加宽列**。
-  实测占宽：mRate 78 / m1Rate 89 / wRate 78 / mOosRate 129 / wOosRate 129 / f4 129 / f3 120 / f1 119 / a 78 / f5 175 / mGap 119 / mOosGap 119 / wGap 119 / wOosGap 119 / f1q 165 / bandShare 88。
-  `COLW = [38,150,132×5,140×4,178,122×4,168,132,172,132]`（表宽 2374px）；改表头文字后必须重量并同步 COLW。
-- **表头点击排序**：15 个指标列可点，一下降序、再点升序，默认订单销量降序；`state.sort[表key]={k,dir}` 每表独立记忆（含站点表 `'_site'`）；取值挂 `COL_DEF` 的 `v:o=>…`；指示器 `<i class="sk">` 固定 11px 宽；**点击须排除 `.rz`（列宽手柄）与 `.fbtn`（筛选按钮）**；切粒度重置。
-- 附属列由 `AUX_DEFS` 声明：国家Listing 表 = 三级分类（取该 listing 订单销量最大的分类，多分类标 `+N`）；SKU 表 = 三级分类 + 国家Listing（`#`/三级分类/国家Listing/最早SKU/预测SKU 五列固定）。每列带自己的表头筛选（键 `维度@列名`，状态 `state.hideAux`），只影响本表，多列取交集。
-- 所有宽表列宽可拖（表头右边界 9px 手柄，双击复位），存 `state.colW[维度]`；固定列偏移由 `--lka/--lk1/--lk2` 推导。
-- 交互克制：**不挂排序下拉框、不挂板块内搜索框、不挂表底说明小字**；检索统一走表头筛选面板（搜索+勾选+全选/清空/重置/应用）；排序入口只有点表头。
-- **文本选择保护（`textSelecting()`）**：表格里**拖选 / Ctrl+A 全选复制时不能触发行下钻**（用户 2026-11-10 明确要求「允许我全选复制，不要这样全选也下钻」）。
-  实现：document 捕获阶段记 mousedown 坐标，mouseup 时若位移 ≥5px 或选区非空则置 `_selBusy=true`；4 个点击入口（维度板块 tr、站点明细 tr、达成率 td.rt、站点卡片 .scard）开头 `if(textSelecting()) return;`。
-  ⚠️ 不要再给 `thead th.sortable` 加 `user-select:none`（会把表头排除在复制内容外）。新增点击入口时要同步加这行，`test_dashboard.js` 的「文本选择保护」用例会核对保护点数量（当前 4）。
-- 高基数维度（项数 > 20）**不画订单销量占比构成条**（`COMP_MAX=20`）：三级分类/国家Listing/SKU 一律不画。
-- 每张宽表右上方「自定义列」按钮（面板底部：全选/清空/默认/**应用全局**/完成）。「应用全局」把当前勾选写入 `['_site',...DIM_KEYS]` 全部 `ctxKey` 的 `state.hideCols`（用户要求，按钮文字两个字一行）。
-- **趋势图**：默认近 `trendWin` 个周期，折线指标可切换（5 项），**柱状随指标联动**（折线 = 柱1÷柱2）。两根柱都标数值（柱1 `#2f5bd7`、柱2 `#8593aa`）；窄面板下强制上下错开 ≥14px；标签顶部夹取 `PT-6`（不是 `PT+9`，否则高值标签顶格重合）。
-- **达成率 / 预测量占比数字可点 → 弹窗看该项自身趋势**（`#tpop`，与站点图同一套柱+折线）：5 个达成率列 + 2 个占比列渲染 `<td class="rc rt" data-rt="口径键">`（`rowHTML` 的 `clkRate`，`clkRate = tblKey && tblKey!=='_site'` —— 站点明细表不参与）。
-  口径在 `RATE_TREND`（柱1=分子、柱2=分母、折线=比值，必须自洽），含 `bandShare`(f1q/f1)、`bandShare4`(f4q/f4)。
-  **弹窗内不提供口径切换**（点哪个显示哪个），头部只放只读 `.tp-metric` 标签；关闭三通道 ✕/遮罩/Esc；`renderAll()` 末尾刷新弹窗；点数字要 `stopPropagation()` 避免触发整行下钻。
-  **不要再给维度板块加常驻趋势图**（做过一版多折线，被否掉）。
-- 趋势图宽度按面板实宽自适应：单站点时面板占满整行（`.trend-grid.one{grid-template-columns:1fr}`），SVG 宽 = 面板宽−26，满宽柱体 44px、画布高 300；窗口缩放 >60px 自动重绘。
-- 左侧目录导航：8 维度 + 站点，scroll spy 高亮，跳转 = 平滑滚动 + 原生锚点兜底。尺寸（用户嫌小后调大，别改小）：列宽 **206px**、项字号 **14px**、序号 12px、标题行 12px、项内边距 `10px 12px`、卡片内边距 `15px 12px 12px`；选中态左指示条 4px、`left:-12px`（= 卡片 padding-left，改内边距须同步）；窄屏 <1180px 隐藏。
-- **站点 KPI 行固定 7 列恒定一行**（`repeat(7,minmax(0,1fr))`，不要 auto-fit 否则 6+1 换行）；≤1000px 才退回 auto-fit。
-- **选中单站点时隐藏「各站点表现」标题 + 站点卡片**（与上方 KPI 重复）；「全部站点」时显示。站点明细表保留。
-- **站点明细表不打「已下钻」标记**（`wideTable` 的 `onName` 固定传 `null`），该标记只给维度板块。
-- 缺口 TOP3 洞察区 `.insights` **固定 4 列**（`repeat(4,minmax(0,1fr))`，900px→2 列，560px→1 列）。
-- **巴西淘汰筛选**：`data_all.json.elimSkus`（约 397 个最早SKU）→ `loadMode` 里按 `D.dims['SKU'][i].split('|')[0]` 命中 → `let ELIM_SET`（SKU 维度下标集合）→ `recsFor` 按 `state.elim` 过滤。**仅巴西站显示** `全量/正常/淘汰` 三个 chip（标签行 `SKU状态`）；离开巴西站时 `state.elim='ALL'`（不加 renderAll，避免死循环）。
-- **导出 CSV 必须遵循自定义列**：`exportTableCSV` 读 `table.getAttribute('data-hide')` 过滤，⚠️ 不能用 `hideColsSet(tblKey)`（前者含 SKU 表默认排除列）。
-- 颜色惯例：涨/达成红、跌/未达成绿（国内习惯）；货币 ¥。
+## 视觉 / 交互
+- **红绿语义全页唯一**：红=达成/超出；绿=未达成/落后。货币 ¥。
+- 达成率五档：≥110% 实心深红白字、100~110% 浅底红、90~100% 浅底橙、80~90% 浅底绿、<80% 实心绿白字；图例每板块底部各一份。
+- `fmtGap(v)`：**实际超出→`+`，不足→`-`**（与算式值相反）；颜色按算式（正=绿/负=红）。右下角「绿色＝实际少于预测（-）　红色＝实际超出预测（+）」。环比等变化量保留原符号。
+- 表格 `table-layout:fixed`+`<colgroup>`；表头与数值居中（名称左对齐、序号居中）。
+- 🔴 **表头文字是用户原文，一个字不许改**（不重排/不加 `<br>`/不缩写），放不下**只加宽列**。
+  实测占宽：mRate78/m1Rate89/wRate78/mOosRate129/wOosRate129/f4129/f3120/f1119/a78/f5175/mGap119/mOosGap119/wGap119/wOosGap119/f1q165/bandShare88。
+  `COLW=[38,150,132×5,140×4,178,122×4,168,132,172,132]`（表宽 2374px）；改表头必重量并同步。
+- **表头排序**：15 指标列可点，一下降序再升序，默认订单销量降序；`state.sort[表key]={k,dir}` 每表独立（含 `'_site'`）；取值挂 `COL_DEF.v`；指示器 `.sk` 固定 11px；**排除 `.rz`/`.fbtn`**；切粒度重置。
+- 附属列 `AUX_DEFS`：Listing 表=三级分类（取订单最大分类，多分类 `+N`）；SKU 表=三级分类+国家Listing（`#`/三级分类/国家Listing/最早SKU/预测SKU 五列固定）。每列独立表头筛选（键 `维度@列名`，状态 `state.hideAux`），只影响本表、多列取交集。
+- 宽表列宽可拖（表头右 9px 手柄，双击复位），存 `state.colW[维度]`；固定列偏移由 `--lka/--lk1/--lk2` 推导。
+- 交互克制：不挂排序下拉、不挂板块内搜索框、不挂表底说明；检索只走表头筛选面板（搜索+勾选+全选/清空/重置/应用）；排序只有点表头。
+- **文本选择保护 `textSelecting()`**：拖选/Ctrl+A 不能触发行下钻（用户 11-10 要求）。捕获阶段记 mousedown，mouseup 位移≥5px 或选区非空置 `_selBusy`；4 个入口（维度 tr、站点明细 tr、`td.rt`、`.scard`）开头 `if(textSelecting()) return;`。⚠️ 别给 `thead th.sortable` 加 `user-select:none`；新增入口要同步加，测试核对保护点数量（当前 4）。
+- 高基数（>20 项）不画订单占比构成条（`COMP_MAX=20`）：三级分类/Listing/SKU 不画。
+- 每张宽表右上「自定义列」（底部 全选/清空/默认/**应用全局**/完成）；「应用全局」写入 `['_site',...DIM_KEYS]` 全部 `ctxKey` 的 `state.hideCols`。
+- **趋势图**：默认近 `trendWin` 期，折线指标 5 项可切，**柱状随指标联动**（折线=柱1÷柱2）。两柱都标值（柱1 `#2f5bd7`、柱2 `#8593aa`）；窄面板强制上下错开≥14px；标签顶部夹 `PT-6`。单站点 `.trend-grid.one{1fr}`，SVG 宽=面板宽−26、满宽柱 44px、高 300；缩放>60px 重绘。
+- **达成率/占比数字可点 → `#tpop` 弹窗**（同柱+折线）：5 达成率 + 2 占比列渲染 `td.rc.rt`（`clkRate = tblKey && tblKey!=='_site'`，站点明细表不参与）。口径 `RATE_TREND`（柱1分子/柱2分母/折线比值，须自洽），含 bandShare(f1q/f1)、bandShare4(f4q/f4)。弹窗内不提供口径切换，只放只读 `.tp-metric`；关闭 ✕/遮罩/Esc；`renderAll()` 末尾刷新；点数字 `stopPropagation()`。
+- **Q4 名称弹窗走同一 `#tpop` 但形态是表**（`openTrendPop(dim,name,'wRate','table')`→`renderQ4PopTable()`；用户 11-11 纠正「弹窗出表头像这样的预测达成」）。行=`trendPeriods()`；**固定 10 列**：周期/M版达成/加权达成/销售预测（最新版）/销售预测（加权）/订单销量/M版订单预测缺口/加权订单预测缺口/加权版70%-130%的预测量/预测量占比（不含 M-1 与断货清洗，别再自行加回）。缺口用 `fmtGap`+`gapup/gapdown`。
+  ⚠️ 列宽**不写死**：`table-layout:auto`+`width:100%`+无 colgroup；但 `table.tp-tbl thead th` **必须显式 `white-space:normal`**（全局 `thead th` 是 nowrap，否则撑到 max-content 溢出）+`text-wrap:balance`。占比只给数字不画条。
+- **Q4 集中度一句话**：分母 = **`q4ScopeGap()`**（当前筛选 粒度/时间/站点/业务组 下本期**全部记录**的 Σ(f1−a)），**四卡必须同数**（用户 11-11 纠正：不能各表算各的异常项之和）。分子 = TOP N 的 curGap 之和，**N 按维度**：三级分类 `Q4_TOP`=10、Listing `Q4_TOP_DIM`=15（`q4TopN`）；**表格默认行数 = 句中的 N**。再给累计到 40% 的 `k40`（未达则「全部计入仍未到 40%」）。
+  文案：「本表 TOP10 加权缺口合计 X 件，占本期当前筛选总加权缺口 Y 件（全部项合计，实际少于预测）的 P%；按缺口从大到小累计，到 TOP k 项即占 40%。」
+  对账：墨西哥+收纳组 11.1~11.7 → 9,486.6，主看板业务组表同行 `-9,486.6`。
+- **Q4 四张清单结构（8 列）**：上级维度(BU/三级分类) | 名称 | **负责人** | 加权预测 | 订单销量 | 加权缺口 | 近N期占比/达成 | 判定。colgroup `10/15/12/9/9/10/19/16`、`min-width:830px`、空态 `colspan=8`。
+  负责人 = 该项下 **Σf1 最大的业务负责人**，跨多个时名字 + `<i class="q4auxn">+N</i>`（title 说明）；`td.q4own` 左对齐 12px 省略号。
+  判定三档：① `allLow && falling`（逐期不高于上期）② `allLow` ③ `halfLow`；按缺口降序，同值以加权预测、名称决胜。
+- **Q4 每表可单独导出 CSV**：卡片头 `.q4exp`（`data-q4exp="kind:dim"`）→ `exportQ4CSV()` → 纯函数 `q4CSV()`（测试直接断言）。导出**当前筛选完整清单**（不受展开影响）；列 = 上级维度/名称/**负责人**/加权预测/订单销量/加权缺口/每期一列/判定；数值用屏幕格式（`fmtN`、`fmtGap`）与画面逐格对上；带 `\uFEFF` BOM。**不要再给维度板块加常驻趋势图**（做过被否）。
+- **Q4 视图**：`applyQ4View()` 只认明确信号 —— hash 前缀 `q4`→进、空 hash→出、其它 hash→维持现状（`on=now`）。目录点击偏移读 `--nav-gap`，兜底用 `window.scrollTo`（⚠️ 别改 hash，否则一次点击被踢回主看板）。
+- 左侧目录：8 维度+站点，scroll spy；尺寸别改小：列宽 206px、项 14px、序号 12px、标题 12px、项 padding `10px 12px`、卡片 `15px 12px 12px`、选中条 4px `left:-12px`（=卡片 padding-left，需同步）、<1180px 隐藏。
+- 站点 KPI 固定 7 列一行（`repeat(7,minmax(0,1fr))`，别 auto-fit 否则 6+1）；≤1000px 才退回 auto-fit。
+- 选单站点时隐藏「各站点表现」标题+卡片（与 KPI 重复），「全部站点」显示；站点明细表保留。站点明细表不打「已下钻」（`onName=null`）。
+- 缺口 TOP3 洞察 `.insights` 固定 4 列（900px→2、560px→1）。
+- **巴西淘汰筛选**：`elimSkus`(~397 最早SKU) → `loadMode` 按 `D.dims['SKU'][i].split('|')[0]` → `ELIM_SET` → `recsFor` 按 `state.elim`。**仅巴西站**显示 全量/正常/淘汰（标签 `SKU状态`）；离开巴西 `state.elim='ALL'`（不加 renderAll 避免死循环）。
+- **导出 CSV 遵循自定义列**：`exportTableCSV` 读 `table.getAttribute('data-hide')`，⚠️ 不能用 `hideColsSet(tblKey)`。
+- 颜色惯例：涨/达成红、跌/未达成绿。
 
-## 发布（GitHub 仓库 + Pages）
-- 📦 <https://github.com/c89135028-ux/sales-forecast-dashboard>（**public**）
-- 🌐 <https://c89135028-ux.github.io/sales-forecast-dashboard/>（Pages，source = `main` / `/`）
-- **入口页必须是仓库根目录 `index.html`**，与 `销售预测达成看板.html` **逐字节一致**（md5 相同）；中文名文件保留供本地双击。**每次更新两个文件都要 cp 同步**。
-- ⚠️ GitHub 不支持中文仓库名 → 用英文 `sales-forecast-dashboard`，中文标题写进 description。
-- ⚠️ Free 计划私有仓库无法启用 Pages（422）→ 先 `PATCH {"private": false}` 转公开。
-- 建 Pages（无 `gh` CLI）：`TOKEN=$(printf 'protocol=https\nhost=github.com\n\n' | git credential fill | sed -n 's/^password=//p')` 后 `curl -X POST .../pages -d '{"source":{"branch":"main","path":"/"}}'` → 201。
-- ⚠️ 沙箱里 `git push` / `curl -X POST` 可能被 SIGTERM 中断（exit 1 无输出）→ 重试通常可过；先 `git log` / `git ls-remote` 确认。push 用 `git push "https://USER:$TOKEN@github.com/USER/REPO.git" main`，别用裸 `git push origin main`。
-- ⚠️ `git credential fill` **不能放进 `bash -c` 子 shell**（token 变空 → 401），必须直接管道。
-- `.gitignore`：`备份/`、`build/_composed_err.js`、`__pycache__/`、`dist/`。线上比本地少约 1.6KB = CRLF→LF，内容无损。
-- ⚠️ **仓库根目录必须有 `.nojekyll`**（空文件）：2026-11-10 起 Pages 的 Jekyll 构建连续两次 `errored / Page build failed`（内容本身没问题），加 `.nojekyll` 后立即 `built`。排查命令：
-  `curl -s -H "Authorization: Bearer $TOKEN" .../pages/builds?per_page=2` 看 `status`；`built` 后再核对线上 `builtAt`。
-- ⚠️ **push 后线上不会立刻更新**，通常 2~5 分钟；用 `index.html?t=$(date +%s)` 绕 CDN 缓存，比对「本地去 CRLF == 线上」才算发布成功。
+## 发布（GitHub + Pages）
+- 📦 https://github.com/c89135028-ux/sales-forecast-dashboard （public）
+- 🌐 https://c89135028-ux.github.io/sales-forecast-dashboard/ （Pages，main /）
+- 入口必须是根 `index.html`，与 `销售预测达成看板.html` **逐字节一致**；每次更新都要 cp 同步。
+- 中文仓库名不支持 → 用英文名，标题写 description。Free 私有仓库不能开 Pages（422）→ 先转 public。
+- 建 Pages（无 gh CLI）：`TOKEN=$(printf 'protocol=https\nhost=github.com\n\n' | git credential fill | sed -n 's/^password=//p')` 后 `curl -X POST .../pages -d '{"source":{"branch":"main","path":"/"}}'`。
+- ⚠️ 沙箱 `git push`/`curl -X POST` 可能被 SIGTERM（exit 1 无输出）→ 重试；先 `git log`/`git ls-remote` 确认。push 用 `git push "https://USER:$TOKEN@github.com/USER/REPO.git" main`。
+- ⚠️ `git credential fill` 不能进 `bash -c` 子 shell（token 空→401），必须直接管道。
+- `.gitignore`：`备份/`、`build/_composed_err.js`、`__pycache__/`、`dist/`。线上少约 1.6KB = CRLF→LF。
+- ⚠️ 根目录必须有 `.nojekyll`（空文件）：Jekyll 曾连续 `Page build failed`，加上即 built。排查 `.../pages/builds?per_page=2` 看 status。
+- ⚠️ push 后线上 2~5 分钟才更新；用 `?t=$(date +%s)` 绕缓存，比「本地去 CRLF == 线上」才算成功。
 
 ## 复用
-- 同类「Excel → 多维度看板」需求可复用技能 `~/.workbuddy/skills/dimension-kpi-dashboard/`（SKILL.md 含全部踩坑约定，assets/ 有模板与脚本）。
+- 同类「Excel→多维度看板」可复用 `~/.workbuddy/skills/dimension-kpi-dashboard/`（SKILL.md 含全部踩坑）。
