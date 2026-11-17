@@ -2538,13 +2538,15 @@ function renderQ4(){
   }
   const note=document.getElementById('q4Note');
   if(note){
-    const half=Math.ceil(per.length/2);
-    note.innerHTML = `<b>判定</b>（按本期<b>加权预测缺口</b> = 销售预测(加权) − 订单销量，从大到小排列；默认展示：三级分类前 ${q4TopN('三级分类')} 项、国家Listing 前 ${q4TopN('国家Listing')} 项，同一项命中多档取序号靠前一档）：
-      <b>① 连续${per.length}${U}不达且无改善</b> ｜ <b>② 连续${per.length}${U}不达</b> ｜ <b>③ 一半及以上不达</b>（≥ ${half} ${U}）。
-      阈值：占比异常 ①② &lt; 35%、③ &lt; 30%；达成异常 ①②③ &lt; 90%。
-      <b>跨 BU 的同名三级分类</b>（边桌 / 床头柜 / 斗柜 / 玄关桌 / 简易衣柜等）<b>按 BU 拆成两行</b>，各自计算缺口、库存与业务负责人。
-      <b>无改善</b>= 逐期持续下降（每期都不高于上一期，中途无回暖；持平算未改善，回升才算打破趋势）；占比序列为「加权版70%-130%预测量 ÷ 该项销售预测(加权)」。
-      <br><b>库存三列</b>（FBA总可销售展示库存 / 7DMS / 可售天数）为<b>墨西哥站（MX）</b>口径，数据源${INV.src?`「${esc(INV.src)}」`:'「MX&BR冲坑周跟进」'}${INV.tag?`（维度更新 ${esc(INV.tag)}${INV.asOf?`，数据日期 ${esc(INV.asOf)}`:''}）`:''}；<b>选巴西站时三列显示「—」</b>。可售天数 = 总可销售展示库存 ÷ 7DMS，∞ 表示 7DMS 为 0 但仍有库存；同一三级分类跨 BU 拆成多行时，库存与 7DMS 相加、天数重算。`;
+    /* 说明文案（用户 11-17 给定措辞，四句按「判定异常逻辑 / 异常打标 / 默认展示 / 库存三列」顺序） */
+    const nCat = q4TopN('三级分类'), nLst = q4TopN('国家Listing');
+    const invSrc = INV.src ? `「${esc(INV.src)}」` : '「MX&BR冲坑周跟进」';
+    note.innerHTML =
+      `<b>判定异常逻辑</b>：加权版70%-130%占比 ＜ 35%；加权达成 ＜ 90%<br>`
+    + `<b>异常打标</b>：① 连续${per.length}${U}不达且无改善 ｜ ② 连续${per.length}${U}不达 ｜ ③ 一半及以上不达（≥ ${Math.ceil(per.length/2)} ${U}）。<b>无改善</b> = 逐期持续下降<br>`
+    + `<b>默认展示</b>：三级分类前 ${nCat} 项、国家Listing 前 ${nLst} 项，同一项命中多档取序号靠前一档。按本期<b>加权预测缺口</b> = 销售预测(加权) − 订单销量，从大到小排列<br>`
+    + `<b>库存三列</b>（FBA总可销售展示库存 / 7DMS / 可售天数）为<b>墨西哥站（MX）</b>口径，数据源${invSrc}`
+    + `${INV.tag?`（维度更新 ${esc(INV.tag)}${INV.asOf?`，数据日期 ${esc(INV.asOf)}`:''}）`:''}；<b>选巴西站时三列显示「—」</b>，可售天数 = 总可销售展示库存 ÷ 7DMS（∞ 表示 7DMS 为 0 但仍有库存）`;
   }
   const blocks=[['share','三级分类'],['share','国家Listing'],['rate','三级分类'],['rate','国家Listing']];
   /* 同一个维度项在「占比异常」和「达成异常」两张清单里可能都命中，入口数字按维度项去重 */
