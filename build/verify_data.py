@@ -65,6 +65,13 @@ def parse_sources(build_file, multi):
     return [m.group(1)]
 
 
+def parse_latest_sources(build_file):
+    """从构建脚本解析 LATEST_ATTR_SRC（五项基础信息的基准表）。"""
+    txt = open(os.path.join(HERE, build_file), encoding='utf-8').read()
+    m = re.search(r'^LATEST_ATTR_SRC\s*=\s*\[(.*?)\]', txt, re.M | re.S)
+    return re.findall(r"r?['\"](.+?)['\"]", m.group(1)) if m else []
+
+
 def read_source(path, tcol):
     d = pd.read_excel(path, sheet_name=0)
     raw_n = len(d)
@@ -154,21 +161,63 @@ def check_mode(key):
             fails.append(f'{dim} 不守恒 {v} != {tot}')
         print(f'  {dim:<12} 组数 {len(g):>5}  求和 {v:>14,.2f}  {"OK" if ok else "FAIL"}')
 
-    # ---- 2.5) BU ↔ 业务组 唯一归属（用户给定归属表，见 build_data*.py 的 BU_GROUP）----
+    # ---- 2.5) BU ↔ 业务组 归属（用户 11-17：以源表为准，表里写两个就保留两个）----
     print()
-    print('[2.5] BU 是否只属于一个业务组（按用户归属表分类）')
+    print('[2.5] BU 的业务组归属（以源表为准；只要求**最新期**唯一，历史期允许按表保留多归属）')
     bu_i, grp_i, per_i = 3, 2, 0
-    seen = {}
+    last_p = max((r[per_i] for r in recs), default=0)
+    seen, seen_latest, spread = {}, {}, {}
     for r in recs:
         seen.setdefault(r[bu_i], set()).add(r[grp_i])
-    bad_bu = {b: sorted(v) for b, v in seen.items() if len(v) > 1}
+        spread.setdefault((r[bu_i], r[grp_i]), set()).add(r[per_i])
+        if r[per_i] == last_p:
+            seen_latest.setdefault(r[bu_i], set()).add(r[grp_i])
+    bad = {b: sorted(v) for b, v in seen.items() if len(v) > 1}
+    bad_latest = {b: sorted(v) for b, v in seen_latest.items() if len(v) > 1}
     for b in sorted(seen):
-        print(f"  {d['dims']['BU'][b]:<12} → {', '.join(sorted(d['dims']['业务组'][g] for g in seen[b]))}")
-    if bad_bu:
-        fails.append('、'.join(d['dims']['BU'][b] for b in bad_bu) + ' 跨多个业务组')
-        print('  FAIL：上述 BU 跨多个业务组')
+        tag = ''
+        if b in bad:
+            parts = [f"{d['dims']['业务组'][g]}（{len(spread[(b, g)])} 个周期）" for g in sorted(seen[b])]
+            tag = '  ← 跨 ' + str(len(seen[b])) + ' 个：' + ' / '.join(parts)
+        print(f"  {d['dims']['BU'][b]:<12} → {', '.join(sorted(d['dims']['业务组'][g] for g in seen[b]))}{tag}")
+    if bad_latest:
+        fails.append('、'.join(d['dims']['BU'][b] for b in bad_latest) + ' 在最新期跨多个业务组')
+        print('  FAIL：最新期里上述 BU 仍跨多个业务组（源表自相矛盾，需人工确认）')
+    elif bad:
+        print(f"  OK：最新期每个 BU 唯一归属；历史期 {len(bad)} 个 BU 曾跨业务组，已按源表原值保留")
     else:
         print('  OK：每个 BU 唯一归属')
+
+    # ---- 2.6) 五项基础信息与「最新源表」逐行一致（用户 11-17：SKU 归谁以表为准，站点分开算）----
+    print()
+    print('[2.6] 五项基础信息 vs 最新源表（按 (SKU, 站点) 逐行核对）')
+    attr_paths = [p for p in parse_latest_sources(MODES[key]['build']) if os.path.exists(p)]
+    if not attr_paths:
+        print('  ⚠ 未找到最新源表（LATEST_ATTR_SRC），跳过')
+    else:
+        af = []
+        for p in attr_paths:
+            a = pd.read_excel(p, sheet_name=0)
+            af.append(a[a.iloc[:, 0].astype(str) != '合计'])
+        A = pd.concat(af, ignore_index=True)
+        A['最早SKU'] = A['最早SKU'].astype(str).str.strip()
+        A['预测站点'] = A['预测站点'].astype(str).str.strip()
+        amap = {(r['最早SKU'], r['预测站点']): r for _, r in A.iterrows()}
+        bad = {c: 0 for c in ('BU', '三级分类', '产品组', '业务组', '业务负责人')}
+        hit = 0
+        for r in recs:
+            row = amap.get((d['dims']['SKU'][r[19]].split('|')[0].strip(), SIT[r[1]]['code']))
+            if row is None:
+                continue
+            hit += 1
+            for c in bad:
+                if str(d['dims'][c][r[DIMS[c]]]).strip() != str(row[c]).strip():
+                    bad[c] += 1
+        print(f'  可核对行 {hit} / {len(recs)}（其余 SKU 不在最新表中，保留其当期源表值）')
+        for c, n in bad.items():
+            print(f"    {c:<6} 不一致 {n:>5} 行  {'OK' if n == 0 else 'FAIL'}")
+            if n:
+                fails.append(f'{c} 与最新表不一致 {n} 行')
 
     # ---- 3) 行数 / listing 回填 ----
     print()

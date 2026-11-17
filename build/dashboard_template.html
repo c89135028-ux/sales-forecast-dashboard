@@ -187,6 +187,9 @@ tbody tr.on td{border-bottom-color:#dbe5fb}
 td.rank{color:var(--muted);font-size:12px;width:34px}
 td.name{font-weight:600;color:var(--ink);max-width:260px}
 td.name .nm{display:inline-flex;align-items:center;gap:6px}
+/* 三级分类同名跨 BU 拆行后，名称后的小 BU 标签（辅助信息，不抢名称的视觉权重） */
+.butag{flex:0 0 auto;font-size:10px;font-weight:500;color:#7b8aa6;background:#f0f3f8;
+  border-radius:4px;padding:1px 4px;white-space:nowrap}
 td.num{text-align:right;color:var(--ink2)}
 td.num b{color:var(--ink);font-weight:600}
 .share{display:flex;align-items:center;gap:7px}
@@ -623,6 +626,7 @@ const state = { mode:null,            // 当前粒度 key
                 hideAux:{},   // 附属列（国家Listing 表的三级分类）局部筛选：dimKey → 排除集合
                 colW:{} };    // 自定义列宽：tableKey -> 宽度数组（拖动表头边界调整）
 let ELIM_SET = new Set(); // 命中巴西淘汰清单的 SKU 维度下标（loadMode 时计算）
+let CROSS_CATS = new Set(); // 同名跨 BU 的三级分类下标（只有这些行按 BU 拆行 + 标注 BU）
 
 /* —— 文本选择保护 ——
    表格里拖选（或 Ctrl+A 全选）是为了复制数据，不能顺带触发行下钻 / 趋势弹窗。
@@ -671,8 +675,22 @@ function loadMode(key){
       if(elimLookup.has(earliest)) ELIM_SET.add(i);
     }
   }
+  /* 预计算：哪些三级分类是「同名跨 BU」的（本期 5 个：边桌/床头柜/斗柜/玄关桌/简易衣柜）。
+     只有这些分类在维度表里按 BU 拆行、并标注所属 BU；其它分类不带标签（用户 11-17）。 */
+  CROSS_CATS.clear();
+  {
+    const ci = DIDX['三级分类'], bi = DIDX['BU'];
+    const seen = new Map();
+    for(let i=0;i<NREC;i++){
+      const r = REC[i];
+      let s = seen.get(r[ci]);
+      if(!s){ s = new Set(); seen.set(r[ci], s); }
+      s.add(r[bi]);
+    }
+    for(const [c, s] of seen){ if(s.size>1) CROSS_CATS.add(c); }
+  }
   state.pidx = D.periods.length-1;
-  state.site = 'ALL'; state.bizGroup = 'ALL'; state.elim = 'ALL'; state.drill = {}; state.hide = {}; state.hideAux = {}; state.top = {}; state.q4more = {}; state.trendIdx = state.trendIdx || 'mRate';
+  state.site = 'ALL'; state.bizGroup = 'ALL'; state.elim = 'ALL'; state.drill = {}; state.drillBu = {}; state.hide = {}; state.hideAux = {}; state.top = {}; state.q4more = {}; state.trendIdx = state.trendIdx || 'mRate';
   state.sort = {}; DIM_KEYS.forEach(k=>{ state.sort[k] = {k:'a', dir:-1}; });   // 默认各表都按订单销量从高到低
   state.sort['_site'] = {k:'a', dir:-1};
   document.title = `拉美销售预测达成看板`;
@@ -711,6 +729,9 @@ function periodLabel(i){ const p=D.periods[i]; return p? p.label : '—'; }
 function matchDrill(r){
   for(const k in state.drill){
     if(r[DIDX[k]] !== DEOF[k].get(state.drill[k])) return false;
+    /* 三级分类按 BU 拆行后，下钻要带上 BU，否则点「边桌·家具BU」会钻到两个 BU 的全部 SKU */
+    if(k==='三级分类' && state.drillBu && state.drillBu[k]!=null
+       && D.dims['BU'][r[DIDX['BU']]] !== state.drillBu[k]) return false;
   }
   return true;
 }
@@ -760,9 +781,18 @@ function dominantAux(list, mainKey, auxKey){
 
 function groupByDim(list, dimKey){
   const k=DIDX[dimKey], m=new Map();
+  /* 三级分类有「同名跨 BU」的情况（边桌/床头柜/斗柜/玄关桌/简易衣柜），
+     与 Q4 口径保持一致：按 BU 拆成两行，各自统计。其它维度不拆。 */
+  const SPLIT = (dimKey === '三级分类');
+  const bi = DIDX['BU'];
   for(const r of list){
-    const id=r[k]; let o=m.get(id);
-    if(!o){ o={id:id, name:D.dims[dimKey][id], a:0,f1:0,f2:0,f3:0,f4:0,f5:0,f1q:0,f4q:0,rows:0,sk:new Set()}; m.set(id,o); }
+    const id=r[k];
+    const key = SPLIT ? (id + '\u0001' + r[bi]) : id;
+    let o=m.get(key);
+    if(!o){ o={id:id, name:D.dims[dimKey][id],
+               /* 只有跨 BU 的分类才带 BU（用于名称后标注 + 下钻过滤），其它分类不挂标签 */
+               bu:(SPLIT && CROSS_CATS.has(id))? D.dims['BU'][r[bi]] : null,
+               a:0,f1:0,f2:0,f3:0,f4:0,f5:0,f1q:0,f4q:0,rows:0,sk:new Set()}; m.set(key,o); }
     o.a+=r.a; o.f1+=r.f1; o.f2+=r.f2; o.f3+=r.f3; o.f4+=r.f4; o.f5+=r.f5; o.f1q+=r.f1q; o.f4q+=r.f4q; o.rows+=r.rn;
     for(const sid of r.ids) o.sk.add(sid);
   }
@@ -854,10 +884,17 @@ function renderFilters(){
   if(!keys.length){
     db.innerHTML = `<span style="font-size:12px;color:#98a5bd">提示：点击任意板块的表格行，即可按该维度项下钻，下方所有板块会同步过滤</span>`;
   }else{
-    db.innerHTML = keys.map(k=>`<span class="dchip">${DIM_LABEL[k]}：<b>${esc(prettyName(k, state.drill[k]))}</b><i data-clear="${k}" title="移除">✕</i></span>`).join('')
+    db.innerHTML = keys.map(k=>{
+      const bu = (state.drillBu||{})[k];
+      return `<span class="dchip">${DIM_LABEL[k]}：<b>${esc(prettyName(k, state.drill[k]))}</b>${bu?` <em style="font-style:normal;color:#7b8aa6">· ${esc(bu)}</em>`:''}<i data-clear="${k}" title="移除">✕</i></span>`;
+    }).join('')
       + `<span class="reset" id="resetDrill">清除全部下钻</span>`;
-    db.querySelectorAll('i[data-clear]').forEach(el=>el.onclick=()=>{ delete state.drill[el.dataset.clear]; renderAll(); });
-    const r=document.getElementById('resetDrill'); if(r) r.onclick=()=>{ state.drill={}; renderAll(); };
+    db.querySelectorAll('i[data-clear]').forEach(el=>el.onclick=()=>{
+      delete state.drill[el.dataset.clear];
+      if(state.drillBu) delete state.drillBu[el.dataset.clear];
+      renderAll();
+    });
+    const r=document.getElementById('resetDrill'); if(r) r.onclick=()=>{ state.drill={}; state.drillBu={}; renderAll(); };
   }
 }
 
@@ -1007,13 +1044,13 @@ function renderInsights(cur){
   const el=document.getElementById('siteInsights');
   el.innerHTML = GAP_CARDS.map(c=>{
     const rows = groupByDim(cur, '三级分类')
-      .map(o=>({name:o.name, gap:c.f(o)}))
+      .map(o=>({name:o.name, bu:o.bu, gap:c.f(o)}))
       .sort((a,b)=>b.gap-a.gap)
       .slice(0,3);
     const body = rows.length
       ? rows.map((r,i)=>`<div class="il">
           <span class="irk ${i===0?'rk1':''}">${i+1}</span>
-          <b>${esc(r.name)}</b>
+          <b>${esc(r.name)}${r.bu?` <span class="butag" title="所属 BU">${esc(r.bu)}</span>`:''}</b>
           <span class="gapv ${r.gap>0?'gapup':(r.gap<0?'gapdown':'gapzero')}" title="缺口 = 预测 − 实际；绿色＝实际少于预测（显示为 -）、红色＝实际超出预测（显示为 +）">${fmtGap(r.gap)}</span>
         </div>`).join('')
       : '<div class="il">当前筛选条件下无数据</div>';
@@ -1240,8 +1277,8 @@ function closeTrendPop(){
   const el = document.getElementById('tpop');
   if(el){ el.hidden = true; el.innerHTML = ''; }
 }
-function openTrendPop(dim, name, metric, kind){
-  trendPop = {dim:dim, name:name, metric: metric || 'mRate', kind: kind || 'trend'};
+function openTrendPop(dim, name, metric, kind, bu){
+  trendPop = {dim:dim, name:name, metric: metric || 'mRate', kind: kind || 'trend', bu: bu || null};
   renderTrendPop();
 }
 function renderTrendPop(){
@@ -1249,7 +1286,7 @@ function renderTrendPop(){
   if(!el) return;
   if(!trendPop){ el.hidden=true; el.innerHTML=''; return; }
   const dim=trendPop.dim, name=trendPop.name;
-  if(trendPop.kind==='table'){ renderQ4PopTable(el, dim, name); return; }   // Q4 名称点击：表格式预测达成
+  if(trendPop.kind==='table'){ renderQ4PopTable(el, dim, name, trendPop.bu); return; }   // Q4 名称点击：表格式预测达成
   const mk = RATE_TREND[trendPop.metric] || RATE_TREND.mRate;
   const ps = trendPeriods();
   el.hidden = false;
@@ -1257,6 +1294,7 @@ function renderTrendPop(){
     <div class="tp-hd">
       <span class="tp-dim">${esc(DIM_LABEL[dim])}</span>
       <span class="tp-nm">${esc(prettyName(dim, name))}</span>
+      ${trendPop.bu?`<span class="tp-dim">${esc(trendPop.bu)}</span>`:''}
       <span class="tp-sub">· ${U}度趋势 · 近 ${ps.length} ${U}（${D.periods[ps[0]].short} – ${D.periods[ps[ps.length-1]].short}）</span>
       <i class="sp"></i>
       <span class="tp-metric">${mk.label}</span>
@@ -1270,16 +1308,20 @@ function renderTrendPop(){
   // 先用自适应宽度画出图（宽度取容器实宽，与站点面板一样的做法）
   const box = document.getElementById('tpChart');
   const w = (box.clientWidth||0) > 320 ? box.clientWidth : 820;
-  box.innerHTML = trendSVG(r=>D.dims[dim][r[DIDX[dim]]]===name, ps, w, mk);
+  const buIdx = DIDX['BU'], bu = trendPop.bu;
+  box.innerHTML = trendSVG(r=> D.dims[dim][r[DIDX[dim]]]===name && (!bu || D.dims['BU'][r[buIdx]]===bu), ps, w, mk);
   document.getElementById('tpClose').onclick = ()=>closeTrendPop();
 }
 
 /* Q4 表格里点名称：弹出「表格式」的预测达成（列与主看板维度表一致，行 = 近 N 期） */
-function renderQ4PopTable(el, dim, name){
+function renderQ4PopTable(el, dim, name, bu){
   const ps = trendPeriods();
   const mk = DIDX[dim];
+  const buIdx = DIDX['BU'];
+  /* 跨 BU 的同名三级分类在 Q4 里是拆成两行的，点哪行就只看哪行所属 BU 的数据 */
   const rows = ps.map(p=>{
-    const t = sumRecs(recsFor({pIdx:p}).filter(r=> D.dims[dim][r[mk]]===name));
+    const t = sumRecs(recsFor({pIdx:p}).filter(r=> D.dims[dim][r[mk]]===name
+      && (!bu || D.dims['BU'][r[buIdx]]===bu)));
     return {p:p, t:t};
   });
   const chip = v => (v==null)
@@ -1303,6 +1345,7 @@ function renderQ4PopTable(el, dim, name){
     <div class="tp-hd">
       <span class="tp-dim">${esc(DIM_LABEL[dim])}</span>
       <span class="tp-nm">${esc(prettyName(dim, name))}</span>
+      ${bu?`<span class="tp-dim">${esc(bu)}</span>`:''}
       <span class="tp-sub">· ${U}度预测达成 · 近 ${ps.length} ${U}（${D.periods[ps[0]].short} – ${D.periods[ps[ps.length-1]].short}）</span>
       <i class="sp"></i>
       <span class="tp-metric">预测达成</span>
@@ -1369,7 +1412,8 @@ function openFilter(key, anchor, rows){
   const {main, aux}=parseFKey(key);
   const hide = aux? state.hideAux[main] : state.hide[main];
   fpop.key=key; fpop.main=main; fpop.aux=aux; fpop.dim= aux||main; fpop.q='';
-  fpop.all=rows.map(r=>r.name);
+  /* 三级分类按 BU 拆行后同名会出现两次，筛选清单按名称去重（勾掉某名称 = 该分类的所有 BU 行） */
+  fpop.all=[...new Set(rows.map(r=>r.name))];
   fpop.sel=new Set(fpop.all.filter(n=>!(hide&&hide.has(n))));
   fpop.anchor=anchor;
   renderFPop();
@@ -1715,8 +1759,11 @@ function wideTable(shown, colLabel, curTot, onName, filterKey, fstat, colw, twoC
   const auxEmpty = auxN? auxCols.map((c,i)=>`<td class="stk ${i===0?'c-name3':'c-name4'}"></td>`).join('') : '';
   // 站点明细表不参与「点达成率弹趋势」（站点本身已有并排趋势图），其余维度板块都参与
   const clkRate = !!tblKey && tblKey!=='_site';
+  /* 三级分类按 BU 拆行：只有「名称 + BU」都命中才算已下钻 */
+  const onBu = (state.drillBu||{})[tblKey] || null;
+  const isOn = r => onName!=null && r.name===onName && (!onBu || r.bu===onBu);
   const body = shown.length
-    ? shown.map((r,i)=>rowHTML(r,i,colLabel,curTot, onName!=null && r.name===onName, twoCol, auxOf(r), clkRate)).join('')
+    ? shown.map((r,i)=>rowHTML(r,i,colLabel,curTot, isOn(r), twoCol, auxOf(r), clkRate)).join('')
     : `<tr><td class="stk c-rank"></td>${auxEmpty}<td class="stk c-name" style="font-weight:400;color:var(--muted)">已全部筛除</td>${twoCol?'<td class="stk c-name2"></td>':''}<td colspan="${spanN}" style="text-align:center;color:var(--muted)">点击表头筛选按钮重新勾选要显示的项目</td></tr>`;
   const hideAttr = [...hideAll].join(' ');
   return `<div class="tscroll"><table class="wide${auxN?' lst':''}" style="min-width:${totalW}px;${stkVar}"`
@@ -1800,7 +1847,9 @@ function rowHTML(r, i, colLabel, curTot, on, twoCol, auxList, clkRate){
   const bw = bs==null? 0 : Math.min(bs,1)*100;
   const bandTip4 = `最新版 70%-130% 预测量 ${fmtN(r.f4q,1)} 件 ÷ 该项销售预测(最新版) ${fmtN(r.f4,1)} 件 = ${fmtPct(bs4)}\n（参考：占当前筛选整体最新版预测 ${fmtN(curTot.f4,1)} 件的 ${fmtPct(bandOverall4(r, curTot.f4))}）`;
   const bw4 = bs4==null? 0 : Math.min(bs4,1)*100;
-  return `<tr class="${on?'on':''}" data-name="${esc(r.name)}"${r.sid!=null?` data-sid="${r.sid}"`:''}>
+  const buTag = r.bu ? ` <span class="butag" title="所属 BU">${esc(r.bu)}</span>` : '';
+  const nmTitle = r.bu ? `${r.name} · ${r.bu}` : String(r.name);
+  return `<tr class="${on?'on':''}" data-name="${esc(r.name)}"${r.bu?` data-bu="${esc(r.bu)}"`:''}${r.sid!=null?` data-sid="${r.sid}"`:''}>
     <td class="rank stk c-rank">${i+1}</td>
     ${auxList? auxList.map((aux,j)=>{
       const cls = j===0? 'c-name3' : 'c-name4';
@@ -1811,7 +1860,7 @@ function rowHTML(r, i, colLabel, curTot, on, twoCol, auxList, clkRate){
     ${twoCol
       ? (()=>{ const a=String(r.name).split('|'); return `<td class="name stk c-name" title="${esc(a[0]||'')}">${esc(a[0]||'')}</td>`
             + `<td class="name stk c-name2" title="${esc(a[1]||'')}">${esc(a[1]||'')}${on?' <span style="color:var(--accent);font-size:11px">已下钻</span>':''}</td>`; })()
-      : `<td class="name stk c-name"><span class="nm" title="${esc(r.name)}">${esc(r.name)}${on?' <span style="color:var(--accent);font-size:11px">已下钻</span>':''}</span></td>`}
+      : `<td class="name stk c-name"><span class="nm" title="${esc(nmTitle)}">${esc(r.name)}${buTag}${on?' <span style="color:var(--accent);font-size:11px">已下钻</span>':''}</span></td>`}
     ${rateCell(MET.mRate(r),   `订单销量 ${fmtN(r.a)} ÷ 销售预测(最新版) ${fmtN(r.f4,1)}`, 'mRate')}
     ${rateCell(MET.m1Rate(r),  `订单销量 ${fmtN(r.a)} ÷ 销售预测(M-1) ${fmtN(r.f3,1)}`, 'm1Rate')}
     ${rateCell(MET.wRate(r),   `订单销量 ${fmtN(r.a)} ÷ 销售预测(加权) ${fmtN(r.f1,1)}`, 'wRate')}
@@ -1884,15 +1933,22 @@ function dimBlock(section, dimKey, blockNo){
       if(textSelecting()) return;          // 拖选/全选复制时不弹趋势窗
       ev.stopPropagation();
       const tr = td.closest('tr');
-      if(tr && tr.dataset.name) openTrendPop(dimKey, tr.dataset.name, td.dataset.rt);
+      if(tr && tr.dataset.name) openTrendPop(dimKey, tr.dataset.name, td.dataset.rt, null, tr.dataset.bu||null);
     };
   });
 
   section.querySelectorAll('tbody tr').forEach(tr=>{
     tr.onclick=()=>{
       if(textSelecting()) return;          // 拖选/全选复制时不下钻
-      const nm=tr.dataset.name;
-      if(state.drill[dimKey]===nm) delete state.drill[dimKey]; else state.drill[dimKey]=nm;
+      const nm=tr.dataset.name, bu=tr.dataset.bu||null;
+      /* 三级分类按 BU 拆行 → 下钻判定要带上 BU，否则点「边桌·家具BU」会把两个 BU 一起钻进去 */
+      const same = state.drill[dimKey]===nm && ((state.drillBu[dimKey]||null)===(bu||null));
+      if(same){
+        delete state.drill[dimKey]; delete state.drillBu[dimKey];
+      }else{
+        state.drill[dimKey]=nm;
+        if(bu) state.drillBu[dimKey]=bu; else delete state.drillBu[dimKey];
+      }
       renderAll();
     };
   });
@@ -2005,11 +2061,14 @@ function invScopeMx(){
   if(!s) return false;
   return /MX/i.test(String(s.name||'') + ' ' + String(s.code||''));
 }
-function invOf(dimKey, name){
+function invOf(dimKey, name, bu){
   if(!invScopeMx()) return null;
-  const map = dimKey==='国家Listing' ? INV.listing : (dimKey==='三级分类' ? INV.cat : null);
-  if(!map) return null;
-  return map[name] || null;
+  if(dimKey==='国家Listing') return INV.listing[name] || null;
+  if(dimKey!=='三级分类') return null;
+  /* 库存表里同名三级分类也是按 BU 拆行的，所以优先取「分类\u0001BU」的值；
+     两行各自对应自己 BU 的库存，不会出现两行显示同一个合计、加总翻倍的问题。 */
+  if(INV.catBu) return INV.catBu[name + '\u0001' + (bu||'')] || null;
+  return INV.cat[name] || null;
 }
 /* 可售天数源表里会直接给「∞」（7DMS=0 但仍有库存），原样显示 */
 function invNum(v, d){
@@ -2019,6 +2078,10 @@ function invNum(v, d){
 }
 function q4Rows(kind, dimKey){
   const cfg=Q4_CFG[kind], field=DIDX[dimKey], per=q4Window(), ps=new Set(per);
+  /* 三级分类有「同名但跨 BU」的情况（边桌/床头柜/斗柜/玄关桌/简易衣柜），
+     用户 2026-11-17 要求按 BU 拆成两行，各自算缺口与负责人；Listing 维度不拆。 */
+  const SPLIT_BU = (dimKey === '三级分类');
+  const buIdx = DIDX['BU'];
   /* 上级维度：三级分类看它的 BU，国家Listing 看它所属的三级分类（按加权预测取最大者，多个标 +N） */
   const AUX = ({'三级分类':'BU','国家Listing':'三级分类'})[dimKey];
   /* DIDX 的值是字段名字符串（如 'b'），不是数字下标 */
@@ -2029,8 +2092,10 @@ function q4Rows(kind, dimKey){
     if(state.site!=='ALL' && r.s!==state.site) continue;
     if(state.bizGroup!=='ALL' && r.g!==state.bizGroup) continue;
     if(!ps.has(r.w)) continue;
-    let m=agg.get(r[field]);
-    if(!m){ m={f1:0, byP:new Map(), aux:null}; agg.set(r[field], m); }
+    /* 拆行时 key = 「分类下标\u0001BU下标」，不拆时 key 就是维度下标 */
+    const key = SPLIT_BU ? (r[field] + '\u0001' + r[buIdx]) : r[field];
+    let m=agg.get(key);
+    if(!m){ m={f1:0, byP:new Map(), aux:null, nameIdx:r[field], buIdx:r[buIdx]}; agg.set(key, m); }
     m.f1+=r.f1;
     let b=m.byP.get(r.w); if(!b){ b={f1:0,f1q:0,a:0}; m.byP.set(r.w,b); }
     b.f1+=r.f1; b.f1q+=r.f1q; b.a+=r.a;
@@ -2038,12 +2103,13 @@ function q4Rows(kind, dimKey){
       if(!m.aux) m.aux=new Map();
       m.aux.set(r[auxField], (m.aux.get(r[auxField])||0) + r.f1);
     }
-    /* 业务负责人：同一个三级分类 / Listing 可能跨多个负责人，按加权预测取最大者，其余标 +N */
+    /* 业务负责人：同一个三级分类 / Listing 可能跨多个负责人，按加权预测取最大者，其余标 +N。
+       拆 BU 之后每组只剩一个负责人，这里的 +N 自然归零。 */
     if(!m.own) m.own=new Map();
     m.own.set(r.o, (m.own.get(r.o)||0) + r.f1);
   }
   const out=[];
-  agg.forEach((m, idx)=>{
+  agg.forEach((m)=>{
     const series=per.map(p=>{ const b=m.byP.get(p); return b? cfg.val(b) : null; });
     const got=series.filter(v=>v!=null);
     if(got.length<2) return;                                  // 有效点太少，不参与判定
@@ -2067,13 +2133,18 @@ function q4Rows(kind, dimKey){
       ownName = D.dims['业务负责人'][oarr[0][0]];
       ownMore = m.own.size - 1;
     }
-    out.push({idx, name:D.dims[dimKey][idx], series, tier, curF1, curA,
+    const name = D.dims[dimKey][m.nameIdx];
+    const bu = SPLIT_BU ? D.dims['BU'][m.buIdx] : null;
+    out.push({idx:m.nameIdx, key:(m.nameIdx+'\u0001'+(m.buIdx==null?'':m.buIdx)), name:name, bu:bu,
+              series, tier, curF1, curA,
               curGap: curF1 - curA,          // 加权预测缺口 = 销售预测(加权) − 订单销量（本期）
               auxName, auxMore, ownName, ownMore, winF1:m.f1,
-              inv: invOf(dimKey, D.dims[dimKey][idx])});   // [库存, 7DMS, 可售天数] 或 null
+              inv: invOf(dimKey, name, bu)});   // [库存, 7DMS, 可售天数] 或 null
   });
-  /* 异常里优先展示缺口大的：本期加权预测缺口 desc → 本期加权预测 desc → 名称 */
-  out.sort((a,b)=> b.curGap-a.curGap || b.curF1-a.curF1 || String(a.name).localeCompare(String(b.name),'zh'));
+  /* 异常里优先展示缺口大的：本期加权预测缺口 desc → 本期加权预测 desc → 名称 → BU */
+  out.sort((a,b)=> b.curGap-a.curGap || b.curF1-a.curF1
+    || String(a.name).localeCompare(String(b.name),'zh')
+    || String(a.bu||'').localeCompare(String(b.bu||''),'zh'));
   return out;
 }
 /* 三档判定文案：① 连续不达且无改善 ② 连续不达 ③ 一半及以上不达（周期单位随粒度走） */
@@ -2131,7 +2202,7 @@ function q4CardHTML(kind, dimKey, rows, per, idx, scopeGap){
       : '—';
     return `<tr>
       <td class="q4aux" title="${esc(r.auxName||'')}">${aux}</td>
-      <td class="q4nm q4clk" data-q4dim="${dimKey}" data-q4name="${esc(r.name)}" title="点击查看「${esc(r.name)}」的预测达成趋势">${esc(r.name)}</td>
+      <td class="q4nm q4clk" data-q4dim="${dimKey}" data-q4name="${esc(r.name)}" data-q4bu="${esc(r.bu||'')}" title="点击查看「${esc(r.name)}${r.bu?` · ${esc(r.bu)}`:''}」的预测达成">${esc(r.name)}</td>
       <td class="q4own" title="${esc(r.ownName||'')}">${own}</td>
       <td>${fmtN(r.curF1,1)}</td>
       <td>${fmtN(r.curA||0,1)}</td>
@@ -2225,7 +2296,7 @@ function renderQ4(){
       const nm=ev.target.closest('[data-q4name]');
       if(nm){
         if(typeof textSelecting==='function' && textSelecting()) return;   // 拖选/全选复制时不弹窗
-        openTrendPop(nm.dataset.q4dim, nm.dataset.q4name, 'wRate', 'table');
+        openTrendPop(nm.dataset.q4dim, nm.dataset.q4name, 'wRate', 'table', nm.dataset.q4bu || null);
         return;
       }
       const b=ev.target.closest('[data-q4more]');
@@ -2254,6 +2325,7 @@ function renderQ4(){
     note.innerHTML = `<b>判定</b>（按本期<b>加权预测缺口</b> = 销售预测(加权) − 订单销量，从大到小排列；默认展示：三级分类前 ${q4TopN('三级分类')} 项、国家Listing 前 ${q4TopN('国家Listing')} 项，同一项命中多档取序号靠前一档）：
       <b>① 连续${per.length}${U}不达且无改善</b> ｜ <b>② 连续${per.length}${U}不达</b> ｜ <b>③ 一半及以上不达</b>（≥ ${half} ${U}）。
       阈值：占比异常 ①② &lt; 35%、③ &lt; 30%；达成异常 ①②③ &lt; 90%。
+      <b>跨 BU 的同名三级分类</b>（边桌 / 床头柜 / 斗柜 / 玄关桌 / 简易衣柜等）<b>按 BU 拆成两行</b>，各自计算缺口、库存与业务负责人。
       <b>无改善</b>= 逐期持续下降（每期都不高于上一期，中途无回暖；持平算未改善，回升才算打破趋势）；占比序列为「加权版70%-130%预测量 ÷ 该项销售预测(加权)」。
       <br><b>库存三列</b>（FBA总可销售展示库存 / 7DMS / 可售天数）为<b>墨西哥站（MX）</b>口径，数据源${INV.src?`「${esc(INV.src)}」`:'「MX&BR冲坑周跟进」'}${INV.tag?`（维度更新 ${esc(INV.tag)}${INV.asOf?`，数据日期 ${esc(INV.asOf)}`:''}）`:''}；<b>选巴西站时三列显示「—」</b>。可售天数 = 总可销售展示库存 ÷ 7DMS，∞ 表示 7DMS 为 0 但仍有库存；同一三级分类跨 BU 拆成多行时，库存与 7DMS 相加、天数重算。`;
   }

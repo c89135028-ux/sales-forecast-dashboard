@@ -56,10 +56,10 @@ def main():
         tag = str(head[0]).replace('维度更新：', '').strip()
     as_of = head[2].strftime('%Y-%m-%d') if len(head) > 2 and hasattr(head[2], 'strftime') else None
 
-    out, stat = {}, {}
+    out, out_bu, stat = {}, {}, {}
     for kind, (sheet, ck, cs, cd, cy) in SHEETS.items():
         ws = wb[sheet]
-        agg = {}
+        agg, agg_bu = {}, {}
         dup = 0
         for r in ws.iter_rows(min_row=HEADER_ROW + 1, max_row=ws.max_row, values_only=True):
             if len(r) < cy:
@@ -77,14 +77,26 @@ def main():
                 a[1] += (d or 0)
             else:
                 agg[key] = [s or 0, d or 0]
+            # 三级分类额外按 (分类, BU) 存一份：Q4 清单按 BU 拆行时，两行各取自己 BU 的库存
+            if kind == 'cat':
+                bu = str(r[2] or '').strip()
+                kb = key + '\u0001' + bu
+                b = agg_bu.get(kb)
+                if b:
+                    b[0] += (s or 0); b[1] += (d or 0)
+                else:
+                    agg_bu[kb] = [s or 0, d or 0]
         # 统一用 库存 ÷ 7DMS 重算可售天数（与源表公式一致；合并项也靠这一步自洽）
-        for key, a in agg.items():
+        def finish(a):
             s, d = a[0], a[1]
             if d > 0:
                 a.append(round(s / d, 4))
             else:
                 a.append('∞' if s > 0 else 0)
-        out[kind] = {k: [round(v[0], 4), round(v[1], 4), v[2]] for k, v in agg.items()}
+            return [round(a[0], 4), round(a[1], 4), a[2]]
+        out[kind] = {k: finish(v) for k, v in agg.items()}
+        if kind == 'cat':
+            out_bu = {k: finish(v) for k, v in agg_bu.items()}
         stat[kind] = (len(agg), dup)
 
     payload = {
@@ -93,11 +105,13 @@ def main():
         'tag': tag,
         'asOf': as_of,
         'cat': out['cat'],
+        'catBu': out_bu,
         'listing': out['listing'],
     }
     OUT.write_text(json.dumps(payload, ensure_ascii=False, separators=(',', ':')), encoding='utf-8')
     for kind, (n, dup) in stat.items():
         print(f'{kind:8s} {n:4d} 项（合并重复 {dup} 行）')
+    print(f'catBu     {len(out_bu):4d} 项（按 分类+BU 拆分）')
     print('维度更新:', tag, '｜数据日期:', as_of)
     print('written:', OUT, OUT.stat().st_size, 'bytes')
 

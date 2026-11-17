@@ -32,14 +32,16 @@ SRCS = [
     r'E:/ziel浏览器下载/日明细数据 (2).xlsx',   # 2026-11（新月，17列齐全；同时是维度口径最新基准）
     r'E:/ziel浏览器下载/日明细数据 (6).xlsx',   # 2026-11（11.1-11.15，整月覆盖上一源）
 ]
-# 维度口径以「最新源」为准：三级分类 / 产品组 / 业务负责人
-# 人员与归属会随时间调整；历史周期也按最新归属统计，避免同一个人被拆成两行
+# 维度口径以「最新源」为准：BU / 三级分类 / 产品组 / 业务组 / 业务负责人
+# 用户 11-17：这五项基础信息「以我给你的表为准，表里都是最新最准确的」。
+# 属性可能**按站点不同**（实测 32 个 SKU 的负责人是巴西=蓝晓琳 / 墨西哥=吴珍妮），
+# 映射键必须 (最早SKU, 预测站点)，只按 SKU 会把两个负责人合并。
 LATEST_ATTR_SRC = [
     r'E:/ziel浏览器下载/日明细数据 (6).xlsx',   # 2026-11 月表（11.1-11.15，最新）
     r'E:/ziel浏览器下载/日明细数据 (7).xlsx',   # 2026-11-08 周表（最新）
 ]
-LATEST_ATTR_COLS = ['三级分类', '产品组', '业务负责人']
-# 业务组 ↔ BU 归属表（用户 2026-11-10 明确给定；新增 BU 时在这里登记一行即可）
+LATEST_ATTR_COLS = ['BU', '三级分类', '产品组', '业务组', '业务负责人']
+# 业务组 ↔ BU 归属表（用户 2026-11-10 给定）——**仅作兜底**：源表业务组为空时才用
 BU_GROUP = {
     '衣物收纳BU': '拉美收纳宠户组',
     '宠物用品BU': '拉美收纳宠户组',
@@ -113,10 +115,12 @@ def merge_sources(paths):
 
 
 def apply_latest_attrs(df):
-    """按最新源重建「最早SKU → 三级分类/产品组/业务负责人」映射，并覆盖**所有周期**。
+    """按最新源重建「(最早SKU, 预测站点) → BU/三级分类/产品组/业务组/业务负责人」映射，覆盖**所有周期**。
 
-    用户明确要求：这三个维度以最新为准。人员/分类会随时间调整，若历史行保留旧值，
-    同一个人会被拆成两行。
+    用户 11-17：这五项一律以源表为准；一个三级分类若分属两个 BU / 产品组 / 业务组 / 负责人，
+    也照表里写的来（不做人为归一、不强行合并）。
+    键必须带「预测站点」：实测 32 个 SKU 的负责人按站点不同（巴西=蓝晓琳 / 墨西哥=吴珍妮），
+    只按 SKU 取众数会把两个人合成一个。站点级查不到的退回 SKU 级兜底。
     """
     paths = [p for p in LATEST_ATTR_SRC if os.path.exists(p)]
     if not paths:
@@ -130,47 +134,98 @@ def apply_latest_attrs(df):
         frames.append(d)
     attr = pd.concat(frames, ignore_index=True)
     attr['最早SKU'] = attr['最早SKU'].astype(str).str.strip()
+    if '预测站点' in attr.columns:
+        attr['预测站点'] = attr['预测站点'].astype(str).str.strip()
+    has_site = '预测站点' in attr.columns and '预测站点' in df.columns
+    df_site = df['预测站点'].astype(str).str.strip() if has_site else None
+
     for c in LATEST_ATTR_COLS:
         if c not in attr.columns or c not in df.columns:
             continue
-        sub = attr[['最早SKU', c]].dropna()
+        sub = attr[['最早SKU', '预测站点', c]].dropna() if has_site else attr[['最早SKU', c]].dropna()
         sub = sub[sub[c].astype(str).str.strip() != '']
         if not len(sub):
             continue
-        # 同一 SKU 在最新源里若出现多个取值，取出现次数最多的那个
-        cnt = sub.groupby(['最早SKU', c]).size().reset_index(name='n')
-        cnt = cnt.sort_values(['最早SKU', 'n'], ascending=[True, False]).drop_duplicates('最早SKU')
-        mp = dict(zip(cnt['最早SKU'], cnt[c]))
-        newv = df['最早SKU'].map(mp)
+        n_pair = 0
+        if has_site:
+            cnt = sub.groupby(['最早SKU', '预测站点', c]).size().reset_index(name='n')
+            cnt = cnt.sort_values(['最早SKU', '预测站点', 'n'],
+                                  ascending=[True, True, False]).drop_duplicates(['最早SKU', '预测站点'])
+            pair = dict(zip(zip(cnt['最早SKU'], cnt['预测站点']), cnt[c]))
+            newv = pd.Series([pair.get((s, t)) for s, t in zip(df['最早SKU'], df_site)],
+                             index=df.index, dtype=object)
+            n_pair = int(newv.notna().sum())
+        else:
+            newv = pd.Series([None] * len(df), index=df.index, dtype=object)
+        # 站点级没查到的退回 SKU 级兜底，只对「全站点同值」的 SKU 生效：
+        # 若该 SKU 按站点有两个负责人，借另一个站点的人来兜底等于把两站点又合并了。
+        miss = newv.isna()
+        n_sku = 0
+        if miss.any():
+            nun = sub.groupby('最早SKU')[c].nunique()
+            single = set(nun[nun == 1].index)
+            cnt2 = sub.groupby(['最早SKU', c]).size().reset_index(name='n')
+            cnt2 = cnt2[cnt2['最早SKU'].isin(single)]
+            cnt2 = cnt2.sort_values(['最早SKU', 'n'], ascending=[True, False]).drop_duplicates('最早SKU')
+            mp2 = dict(zip(cnt2['最早SKU'], cnt2[c]))
+            fill = df.loc[miss, '最早SKU'].map(mp2)
+            n_sku = int(fill.notna().sum())
+            newv.loc[miss] = fill
         mask = newv.notna()
         old = df[c].astype(str).str.strip()
         changed = int((mask & (old != newv.astype(str).str.strip())).sum())
         df.loc[mask, c] = newv[mask]
-        print(f'维度口径（最新源）：{c} 覆盖 {int(mask.sum())} 行，其中与原值不同 {changed} 行')
+        print(f'维度口径（最新源）：{c} 覆盖 {int(mask.sum())} 行'
+              f'（(SKU,站点) 命中 {n_pair} / SKU 兜底 {n_sku}），其中与原值不同 {changed} 行')
     return df
 
 
 def apply_bu_group(df):
-    """按用户给定的「BU → 业务组」归属表重新分类，**覆盖全部周期**。
-
-    业务组是 BU 的上级。源表历史上同一 BU 会分属两个业务组
-    （2026-07/08 源表里 衣物收纳BU / 户外休闲BU 有 6~9% 归家具桌椅组，
-    家具BU 有 9% 归收纳组；2026-08/09 周表里 床具产品组(王雅馨) 约 3% 归收纳组），
-    2026-10 还出现过单行串行（墨西哥站 JKA011A01）。
-    用户已明确归属表，故不再用阈值判断，一律按表归类；未登记的 BU 原样保留并打印。
-    """
+    """业务组兜底：**只补空值**，不覆盖源表已有值（用户 11-17：表里写的为准）。"""
     if 'BU' not in df.columns or '业务组' not in df.columns:
         return df
     bu = df['BU'].astype(str).str.strip()
+    cur = df['业务组'].astype(str).str.strip()
+    blank = cur.isin(['', '（未标注）', 'nan', 'None', 'NaN'])
+    if not blank.any():
+        print('业务组归类：源表业务组均已填写，按源表原值（不覆盖）')
+        return df
     newv = bu.map(BU_GROUP)
-    unknown = sorted(set(bu[newv.isna()].unique()))
+    unknown = sorted(set(bu[blank & newv.isna()].unique()))
     if unknown:
         print(f'业务组归类：未登记的 BU {unknown} → 保持源表原值（请补充到 BU_GROUP）')
-    mask = newv.notna()
-    old = df['业务组'].astype(str).str.strip()
-    changed = int((mask & (old != newv)).sum())
-    print(f'业务组归类：按归属表覆盖 {int(mask.sum())} 行，其中与原值不同 {changed} 行')
+    mask = blank & newv.notna()
     df.loc[mask, '业务组'] = newv[mask]
+    print(f'业务组归类：源表空白 {int(blank.sum())} 行，按归属表兜底 {int(mask.sum())} 行')
+    return df
+
+
+def unify_attr_history(df, time_col):
+    """最新表里已没有该 SKU（停产/换型号）时，用它最后一次出现周期的归属统一全部历史。
+
+    用户 11-17：历史与最新不一致就改成最新的。停产 SKU 查不到最新值，
+    「最后出现时表里怎么写」就是最新可得信息；统一后一个 SKU（同一站点）只有一个归属。
+    """
+    key = ['最早SKU', '预测站点']
+    if not set(key).issubset(df.columns) or time_col not in df.columns:
+        return df
+    for c in LATEST_ATTR_COLS:
+        if c not in df.columns:
+            continue
+        s = df[[*key, time_col, c]].copy()
+        s[c] = s[c].astype(str).str.strip()
+        var = s.groupby(key)[c].transform('nunique')
+        n_var = int((var > 1).sum())
+        if not n_var:
+            print(f'历史归属统一：{c} 无跨期冲突')
+            continue
+        last = s.sort_values(time_col).drop_duplicates(key, keep='last').set_index(key)[c]
+        mi = pd.MultiIndex.from_arrays([df['最早SKU'], df['预测站点']])
+        newv = pd.Series(last.reindex(mi).values, index=df.index)
+        mask = newv.notna()
+        changed = int((mask & (df[c].astype(str).str.strip() != newv)).sum())
+        df.loc[mask, c] = newv[mask]
+        print(f'历史归属统一：{c} {n_var} 行曾跨期不一致 → 按最后出现周期统一，改写 {changed} 行')
     return df
 
 
@@ -192,6 +247,8 @@ def main():
     df = apply_latest_attrs(df)
     # —— 业务组 ⊂ BU 的父子关系校正（防源表把某 BU 的行写成别的业务组）——
     df = apply_bu_group(df)
+    # —— 停产品 SKU（最新表里已没有）：按最后出现周期的归属统一历史 ——
+    df = unify_attr_history(df, TIME_COL)
 
     # 维度列兜底：源表若有缺失，归「（未标注）」而不是丢行，保证各维度合计守恒
     dims_order = ['业务组', 'BU', '产品组', '三级分类', '业务负责人']

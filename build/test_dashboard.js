@@ -61,9 +61,9 @@ const UU = D.unit || '周';
 function grab(key){ return store['section:'+key] || ''; }
 function rows(sectionHtml){
   const out=[];
-  for(const m of sectionHtml.matchAll(/<tr class="[^"]*" data-name="([^"]*)"[\\s\\S]*?<\\/tr>/g)){
+  for(const m of sectionHtml.matchAll(/<tr class="[^"]*" data-name="([^"]*)"(?: data-bu="([^"]*)")?[\\s\\S]*?<\\/tr>/g)){
     const tds=[...m[0].matchAll(/<td[^>]*>([\\s\\S]*?)<\\/td>/g)].map(x=>x[1].replace(/<[^>]+>/g,' ').replace(/\\s+/g,' ').trim());
-    out.push({name:m[1], tds:tds});
+    out.push({name:m[1], bu:m[2]||null, tds:tds});
   }
   return out;
 }
@@ -111,6 +111,48 @@ out.BR子表 = (()=>{ state.site=D.sites.findIndex(s=>s.name.indexOf('巴西')>=
 out.下钻 = (()=>{ state.site='ALL'; state.pidx = LASTW; state.drill['业务组']=DRILL_BIZ; renderAll();
   const r=rows(grab('BU')); const s=rows(grab('三级分类')); const c=rows(grab('业务负责人'));
   return '下钻='+DRILL_BIZ+' BU='+r.length+' 三级分类='+s.length+' 负责人='+c.length+' | 三级分类第一='+ (s[0]?[s[0].name,s[0].tds[1],s[0].tds[16]].join(','):'-'); })();
+out.主看板拆行 = (()=>{
+  // 三级分类里同名跨 BU 的（边桌/床头柜/斗柜...）在维度表里要拆成两行，各带自己的 BU 标签
+  const pv={drill:state.drill, bu:state.drillBu, site:state.site, top:state.top['三级分类']};
+  state.drill={}; state.drillBu={}; state.site='ALL'; state.top['三级分类']=1e6; renderAll();   // 先清下钻 + 展开全部（默认只显示前 15 行，同名组可能不在其中）
+  const html = grab('三级分类');
+  const r = rows(html);
+  const byName = new Map();
+  r.forEach(o=>{ if(!byName.has(o.name)) byName.set(o.name, []); byName.get(o.name).push(o.bu); });
+  const dup = [...byName.entries()].filter(x=>x[1].length>1);
+  const uniq = dup.every(x=>new Set(x[1]).size===x[1].length);
+  // 标签只能出现在「跨 BU」的分类上（用户 11-17：不要每个都加 BU）
+  const bi0=DIDX['BU'], ci0=DIDX['三级分类'], seenBU=new Map();
+  for(const rr of REC){ let s=seenBU.get(rr[ci0]); if(!s){ s=new Set(); seenBU.set(rr[ci0], s); } s.add(rr[bi0]); }
+  const crossNames=new Set([...seenBU].filter(x=>x[1].size>1).map(x=>D.dims['三级分类'][x[0]]));
+  const tagged=r.filter(o=>!!o.bu), untagged=r.filter(o=>!o.bu);
+  const tagOk = tagged.every(o=>crossNames.has(o.name)) && untagged.every(o=>!crossNames.has(o.name));
+  const nm = dup.length? dup[0][0] : null, bus = dup.length? dup[0][1] : [];
+  let drillOk='-', rowsAfter=0, chip='-', popBu=false;
+  if(nm){
+    // 模拟点「该分类 · 第一个 BU」那一行 → 下钻只能留这个 BU
+    state.drill['三级分类']=nm; state.drillBu['三级分类']=bus[0];
+    renderAll();
+    const lst=recsFor({}), bi=DIDX['BU'];
+    drillOk = lst.length>0 && lst.every(x=>D.dims['BU'][x[bi]]===bus[0]);
+    rowsAfter = rows(grab('三级分类')).filter(o=>o.name===nm).length;
+    chip = (store['id:drillBar']||'').replace(/<[^>]+>/g,' ').replace(/\\s+/g,' ').trim();
+    // 点该行达成率 → 弹窗标题也要带 BU（否则同名两行分不清）
+    openTrendPop('三级分类', nm, 'wRate', null, bus[0]);
+    popBu = (store['id:tpop']||'').indexOf(bus[0])>=0;
+    closeTrendPop();
+    state.drill={}; state.drillBu={}; renderAll();
+  }
+  state.drill=pv.drill; state.drillBu=pv.bu; state.site=pv.site;
+  if(pv.top===undefined) delete state.top['三级分类']; else state.top['三级分类']=pv.top;
+  renderAll();
+  return '同名组='+dup.length+'('+dup.map(x=>x[0]).join('/')+')'
+    + ' 带标签'+tagged.length+'/'+r.length+'行 仅跨BU='+tagOk
+    + ' BU不重复='+uniq
+    + ' | 下钻('+nm+' · '+bus[0]+') 只剩该BU='+drillOk+' 同板块剩'+rowsAfter+'行'
+    + ' | 面包屑='+chip+' 弹窗带BU='+popBu
+    + ' | 两行加权预测='+(nm? r.filter(o=>o.name===nm).map(o=>o.tds[9]).join(' / ') : '-');
+})();
 out.矩阵 = (store['id:siteMatrix']||'').replace(/<[^>]+>/g,' ').replace(/\\s+/g,' ').trim().slice(0,200);
 out.trendWin = (store['txt:id:trendWin']||'') + ' | 指标数=' + (store['id:trendMetric']||'').match(/<option/g)?.length;
 out.trendWin_full = (()=>{
@@ -551,6 +593,8 @@ out.Q4冲销异常 = (()=>{
                                     : {a:0.90,b:0.90,v:x=> x.f1>0? x.a/x.f1 : null};
     function ref(kind, dimKey){
       const cfg=cfgOf(kind), field=dimKey==='三级分类'?'c':'l';
+      /* 与模板一致：三级分类按 (分类, BU) 拆行，Listing 不拆 */
+      const SPLIT = (dimKey==='三级分类');
       const per=[]; const end=Math.min(state.pidx, D.periods.length-1);
       for(let i=Math.max(0,end-3); i<=end; i++) per.push(i);
       const map=new Map();
@@ -559,11 +603,15 @@ out.Q4冲销异常 = (()=>{
         if(state.site!=='ALL' && r.s!==state.site) continue;
         if(state.bizGroup!=='ALL' && r.g!==state.bizGroup) continue;
         const j=per.indexOf(r.w); if(j<0) continue;
-        let m=map.get(r[field]); if(!m){ m=per.map(()=>({f1:0,f1q:0,a:0})); map.set(r[field],m); }
+        const key = SPLIT ? (r[field] + '\u0001' + r.b) : r[field];
+        let m=map.get(key); if(!m){ m=per.map(()=>({f1:0,f1q:0,a:0})); map.set(key,m); }
         m[j].f1+=r.f1; m[j].f1q+=r.f1q; m[j].a+=r.a;
       }
       const out=[];
-      map.forEach((arr, idx)=>{
+      map.forEach((arr, key)=>{
+        const parts=String(key).split('\u0001');
+        const ni=+parts[0];
+        const bu=(SPLIT && parts.length>1 && parts[1]!=='') ? D.dims['BU'][+parts[1]] : null;
         const vals=arr.map(cfg.v), got=vals.filter(v=>v!=null);
         if(got.length<2) return;
         const all = got.length===vals.length && got.every(v=>v<cfg.a);
@@ -575,10 +623,12 @@ out.Q4冲销异常 = (()=>{
         const curF1=cur?cur.f1:0, curA=cur?cur.a:0;
         /* 每期都低、但中途回暖 —— 用来验证「持续下降」不是只比首尾（这类必须是 ② 而不是 ①） */
         const midRise = all && !fall;
-        out.push({name:D.dims[dimKey][idx], tier, f1:curF1, gap:curF1-curA, midRise:midRise});
+        out.push({name:D.dims[dimKey][ni], bu:bu, tier, f1:curF1, gap:curF1-curA, midRise:midRise});
       });
       /* 异常里优先展示缺口大的 */
-      out.sort((x,y)=> y.gap-x.gap || y.f1-x.f1 || String(x.name).localeCompare(String(y.name),'zh'));
+      out.sort((x,y)=> y.gap-x.gap || y.f1-x.f1
+        || String(x.name).localeCompare(String(y.name),'zh')
+        || String(x.bu||'').localeCompare(String(y.bu||''),'zh'));
       return out;
     }
     const cards = () => [...(store['id:q4Grid']||'').split('<div class="q4card"').slice(1)];
@@ -588,6 +638,14 @@ out.Q4冲销异常 = (()=>{
       for(let i=1;i<parts.length;i++){
         const seg=parts[i];
         const name=un(seg.slice(seg.indexOf('>')+1, seg.indexOf('</td>')));
+        /* 上级维度列（三级分类表里就是 BU）：拆行后靠它区分同名的两行 */
+        const prev=parts[i-1]||'';
+        const ai=prev.lastIndexOf('<td class="q4aux"');
+        let aux='';
+        if(ai>=0){
+          const s2=prev.slice(ai);
+          aux=un(s2.slice(s2.indexOf('>')+1, s2.indexOf('</td>')).replace(/<i[\\s\\S]*?<\\/i>/g,'')).trim();
+        }
         const rest=seg.slice(seg.indexOf('</td>')+5);
         const v0=rest.slice(rest.indexOf('<td>')+4);
         const f1=+(v0.slice(0, v0.indexOf('</td>')).split(',').join(''))||0;
@@ -602,7 +660,7 @@ out.Q4冲销异常 = (()=>{
         const sq=rest.slice(rest.indexOf('class="q4seq">')+14);
         const seqHtml=sq.slice(0, sq.indexOf('</td>'));
         const tg=rest.slice(rest.indexOf('q4tag t')+7);
-        out.push({name:name, f1:f1, vol:vol, gapShown:gapShown, seqN:seqHtml.split('<span').length-1, tier:+(tg.slice(0,1)||0)});
+        out.push({name:name, aux:aux, f1:f1, vol:vol, gapShown:gapShown, seqN:seqHtml.split('<span').length-1, tier:+(tg.slice(0,1)||0)});
       }
       return out;
     }
@@ -619,7 +677,8 @@ out.Q4冲销异常 = (()=>{
       const expTop=exp.slice(0,NTOP);
       /* 顺序要被严格比对：期望榜已按「加权预测缺口 desc → 加权预测 desc → 名称」排好 */
       const same = got.length===expTop.length
-        && got.every((r,j)=> r.name===expTop[j].name && r.tier===expTop[j].tier);
+        && got.every((r,j)=> r.name===expTop[j].name && r.tier===expTop[j].tier
+             && (!expTop[j].bu || r.aux===expTop[j].bu));
       /* 缺口列显示值 = −(加权预测 − 订单销量)，故「缺口降序」= 显示值升序 */
       let sorted=true; for(let j=1;j<got.length;j++) if(!(got[j-1].gapShown <= got[j].gapShown)) sorted=false;
       const gapOk = got.length===expTop.length
@@ -647,7 +706,7 @@ out.Q4冲销异常 = (()=>{
       const ivOk = ivN === got.length*3 && ivEmpty*2 < ivN;      /* 「首尾下降但中途回升」的项不能被判成 ①（持续下降） */
       const midRiseN = exp.filter(e=> e.midRise).length;
       const noFalseOne = got.every(r=>{
-        const e=expTop.find(x=> x.name===r.name);
+        const e=expTop.find(x=> x.name===r.name && (!x.bu || x.bu===r.aux));
         return !e || !e.midRise || r.tier===2;
       });
       if(!(same&&sorted&&gapOk&&seqLen&&noFalseOne&&auxOk&&volOk&&headOk&&ownOk&&ivOk)) allOk=false;
@@ -656,12 +715,28 @@ out.Q4冲销异常 = (()=>{
         +(ivOk?'':' ✕库存三列('+ivN+'/'+(got.length*3)+',空'+ivEmpty+')')
         +(midRiseN?('(中途回升'+midRiseN+'项)'):''));
     });
-    /* 库存数值必须与源表逐格对上：取第一张卡首行的三格，与 INV.cat 里该项的值比 */
+    /* 库存数值必须与源表逐格对上：取第一张卡首行的三格，与 INV 里「该分类 + 该 BU」的值比 */
     const fName=(cs[0].match(/data-q4name="([^"]+)"/)||[])[1];
-    const ivRef=fName ? INV.cat[fName] : null;
+    const fBu=(cs[0].match(/data-q4bu="([^"]*)"/)||[])[1]||'';
+    const ivRef=fName ? (((INV.catBu||{})[fName+'\u0001'+fBu]) || INV.cat[fName]) : null;
     const ivC=[...cs[0].matchAll(/<td class="q4iv">([^<]*)<\\/td>/g)].map(m=>m[1]).slice(0,3);
     const ivValOk = !ivRef ? true
       : (ivC[0]===fmtN(ivRef[0],0) && ivC[1]===invNum(ivRef[1],2) && ivC[2]===invNum(ivRef[2],1));
+    /* 跨 BU 拆行：同名的三级分类必须拆成两行（BU 不同），且 (名称,BU) 不重复、每行都带 BU */
+    const rrows = q4Rows('share','三级分类');
+    const buByName = {};
+    rrows.forEach(r=>{ (buByName[r.name]=buByName[r.name]||new Set()).add(r.bu); });
+    const dupNames = Object.keys(buByName).filter(n=> buByName[n].size>1);
+    const splitOk = dupNames.length>0
+      && rrows.every(r=> !!r.bu)
+      && new Set(rrows.map(r=> r.name+'\u0001'+r.bu)).size === rrows.length
+      && dupNames.every(n=>{
+           const d = rrows.filter(r=> r.name===n).map(r=> r.curF1);
+           return new Set(d).size > 1;            // 两行的加权预测必须不同，才是真的各算各的
+         });
+    /* 点拆分行 → 弹窗只统计该 BU（标题带上 BU 名） */
+    openTrendPop('三级分类','边桌','wRate','table','衣物收纳BU');
+    const buPopOk = (store['id:tpop']||'').indexOf('衣物收纳BU')>=0;
     const exp0=ref('share','三级分类');
     state.q4more={'share:三级分类':true}; renderQ4();
     const expanded=parse(cards()[0]).length;
@@ -771,7 +846,7 @@ out.Q4冲销异常 = (()=>{
       return { ok: a===true && b===true && c===true && d===false && e===true, txt: [a,b,c,d,e].join('/') };
     })();
     const ok = allOk && txtOk && oneCol && jumpOk && cellOk && popOk===true && viewOk.ok
-      && sumOk && csvOk && brOk && ivValOk
+      && sumOk && csvOk && brOk && ivValOk && splitOk && buPopOk
       && expanded===exp0.length && collapsed===Math.min(exp0.length,q4TopN('三级分类')) && moreBtn && follow;
     return det.join(' | ')
       + ' | 一行一卡=' + oneCol
@@ -783,6 +858,8 @@ out.Q4冲销异常 = (()=>{
       + ' | 导出CSV=' + (csvOk? ('ok 列'+ch+' 行'+(cl.length-1)) : ('✕ 列'+ch+'/期望'+(9+q4Window().length+1)+' 行'+(cl.length-1)+'/'+rr.length))
       + ' | 库存三列=' + (brOk? ('ok 巴西全空'+brEmpty+'/'+brIv) : ('✕ 巴西仍有值 '+(brIv-brEmpty)+'/'+brIv))
       + ' | 库存取值=' + (ivValOk? ('ok '+fName+' '+ivC.join('/')) : ('✕ '+fName+' 页面'+ivC.join('/')+' 源表'+(ivRef?[fmtN(ivRef[0],0),invNum(ivRef[1],2),invNum(ivRef[2],1)].join('/'):'—')))
+      + ' | 跨BU拆行=' + (splitOk? ('ok 同名'+dupNames.length+'组 总行'+rrows.length) : ('✕ 同名组'+dupNames.length+' 行'+rrows.length))
+      + ' | 拆行弹窗=' + (buPopOk? 'ok 带BU' : '✕ 无BU')
       + ' | 判定文案 ' + (txtOk? (t1+' / '+t2+' / '+t3) : ('✕ '+t1+' | '+t2+' | '+t3))
       + ' | 展开 ' + collapsed + '→' + expanded + '/' + exp0.length + ' 收起按钮=' + moreBtn
       + ' | 跟随站点筛选=' + follow + (ok?' OK':' ✕');
