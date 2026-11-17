@@ -39,6 +39,7 @@
 - **表头排序**：15 指标列可点，一下降序再升序，默认订单销量降序；`state.sort[表key]={k,dir}` 每表独立（含 `'_site'`）；取值挂 `COL_DEF.v`；指示器 `.sk` 11px；**排除 `.rz`/`.fbtn`**；切粒度重置。
 - 附属列 `AUX_DEFS`：Listing=三级分类（取订单最大，多分类 `+N`）；SKU=三级分类+国家Listing（五列固定）。每列独立表头筛选（键 `维度@列名`，状态 `state.hideAux`），只影响本表、多列取交集。宽表列宽可拖（表头右 9px 手柄，双击复位），存 `state.colW[维度]`；固定列偏移由 `--lka/--lk1/--lk2` 推导。
 - 交互克制：无排序下拉、无板块内搜索框、无表底说明；检索只走表头筛选面板；排序只有点表头。
+- **表头条件筛选**（每表右上「筛选」，顺序 `筛选|导出|自定义列`）：🔴 **点开是表头下面就地展开一行**（`thead tr.cfr`：运算符下拉 `>≥<≤=` + 数值输入，逐列），**再点一次收起并清空复原**，不是弹层（弹层版做过被否）。状态 `state.cf[维度|'_site']={列key:{op,v}}` + `state.cfOpen[表key]`，`loadMode` 都清。🔴 **op 与 v 分开存**：v 没填时存 `null`（不能删条件，否则重画把运算符重置回 `>`）；`cfCount` 只数 `v!=null`，`cfMatch` 跳过 `v==null`。比率列（`CF_PCT` 7 项）按百分数输入，placeholder `%`。`cfMatch` 在名称筛选之后过滤，非有限值（"—"/∞）有条件下不显示；输入 320ms 防抖 → 重画后**补回焦点和光标**（否则输一个字就掉焦点）；`清空条件` 在名称列。⚠️ 导出 `exportTableCSV` 必须跳过 `tr.cfr`，否则表头混进 `>`/`%`。⚠️ 全局 `svg{width:100%}` 会拉满按钮内图标 → `.cfbtn svg{9px;flex:0 0 auto}`+`nowrap`。⚠️ Node 桩 `#siteMatrix` 快照不随 renderSite 刷新，站点行数只认真实浏览器。
 - **文本选择保护 `textSelecting()`**：拖选/Ctrl+A 不能触发行下钻。捕获阶段记 mousedown，位移≥5px 或选区非空置 `_selBusy`；4 个入口（维度 tr、站点明细 tr、`td.rt`、`.scard`）开头 `if(textSelecting()) return;`。⚠️ 别给 `thead th.sortable` 加 `user-select:none`；新增入口同步加，测试核对保护点数（当前 4）。
 - 高基数（>20 项）不画订单占比构成条（`COMP_MAX=20`）：三级分类/Listing/SKU 不画。
 - 每张宽表右上「自定义列」（全选/清空/默认/**应用全局**/完成）；「应用全局」写 `['_site',...DIM_KEYS]` 全部 `ctxKey` 的 `state.hideCols`。
@@ -63,6 +64,7 @@
 - **库存三列**：源 `E:/ziel浏览器下载/MX&BR冲坑周跟进-W44.xlsx`，「5.三级分类」E 列（国家 A=MX）值取 BF-BH；「6.Listing」G 列（国家=MX）值取 BV-BX；**表头在第 4 行**。`build_inventory.py`→`inventory.json`→`data_all.json.inv`；模板 `INV`/`invScopeMx()`/`invOf()`/`invNum()`。
   ⚠️ 输出 `cat`（按名合计）与 `catBu`（按 `分类\u0001BU`）；Q4 拆行取 `catBu`，否则两行同数、加总翻倍。`cat` 里跨 BU 的库存与 7DMS **相加**、天数重算（天数不能相加）。
   🔴 **只有 MX 口径**：全站/墨西哥显示数值，**巴西三列全「—」**。天数可 **「∞」**。Listing sheet 357 行国家空、284 行 BR → **必须按国家=MX 过滤**。命中率 三分类 103/104、MX listing 608/634 →「—」，不做模糊匹配。
+- **表头条件筛选（Q4 也有）**：卡片头 `.q4exp` 同款「筛选」→ `thead tr.cfr`，6 个数值列（加权预测/订单销量/加权缺口/FBA库存/7DMS/可售天数），key=`kind:维度`，`cfRenderTable` 见 `:` 转 `renderQ4()`；项数显示「命中 / 全量」；导出与列表跟随筛选，**顶部入口数字仍按全量**；可售天数 `∞` 按 Infinity 比较（用 `Number.isNaN` 判空，别用 isFinite）。⚠️ `cfCellHTML` 已自带 `<th>`，别再包一层（会多出 0 宽单元格、整行错位）。
 - **每表可导出 CSV**：卡片头 `.q4exp` → `exportQ4CSV()` → 纯函数 `q4CSV()`（测试断言）。导出当前筛选**完整清单**；列 = 上级维度/名称/负责人/加权预测/订单销量/加权缺口/库存三列/每期一列/判定（`9+周期数+1`）；用屏幕格式（`fmtN`/`fmtGap`/`invNum`）；带 `\uFEFF` BOM。**不要再给维度板块加常驻趋势图**（做过被否）。
 - **Q4 名称弹窗**走同一 `#tpop` 但形态是表（`renderQ4PopTable`）。行=`trendPeriods()`；**固定 10 列**：周期/M版达成/加权达成/销售预测（最新版）/（加权）/订单销量/M版订单预测缺口/加权订单预测缺口/加权版70%-130%的预测量/预测量占比（不含 M-1 与断货清洗）。⚠️ 列宽不写死（`table-layout:auto`+无 colgroup），但 `table.tp-tbl thead th` **必须显式 `white-space:normal`**+`text-wrap:balance`。占比只给数字不画条。
 - **Q4 视图** `applyQ4View()`：hash 前缀 `q4`→进、空 hash→出、其它→维持现状。目录点击偏移读 `--nav-gap`，兜底 `window.scrollTo`（⚠️ 别改 hash，否则一次点击被踢回主看板）。

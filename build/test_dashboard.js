@@ -153,6 +153,50 @@ out.主看板拆行 = (()=>{
     + ' | 面包屑='+chip+' 弹窗带BU='+popBu
     + ' | 两行加权预测='+(nm? r.filter(o=>o.name===nm).map(o=>o.tds[9]).join(' / ') : '-');
 })();
+out.表头筛选 = (()=>{
+  // 每张表右上「筛选」：点开 → 表头下面就地展开一行条件（> ≥ < ≤ =  + 数值），再点收起并复原
+  const g0 = grab('BU');
+  const hasBtn = /data-cfopen="BU"/.test(g0);
+  const before = rows(g0).length;
+  // ① 展开：条件行出现，且每列都有运算符 + 输入框
+  state.cfOpen['BU'] = true; renderAll();
+  const g1 = grab('BU');
+  const rowOpen = /<tr class="cfr">/.test(g1);
+  const cells = (g1.match(/data-cfv="[^"]+"/g)||[]).length;
+  const ops = (g1.match(/data-cfo="[^"]+"/g)||[]).length;
+  const hasClr = /data-cfclr="BU"/.test(g1);
+  const btnOnOpen = /class="cfbtn on"/.test(g1);
+  // ② 订单销量 > 0：全部保留；> 1e12：全部过滤
+  state.cf['BU'] = {a:{op:'>', v:0}}; renderAll();
+  const keep = rows(grab('BU')).length;
+  state.cf['BU'] = {a:{op:'>', v:1e12}}; renderAll();
+  const g2 = grab('BU'), drop = rows(g2).length;
+  const cntTxt = (g2.match(/class="cnt">([^<]*)</)||[])[1]||'';
+  const emptyOk = /无匹配行/.test(g2);
+  // ③ 再点一次「筛选」：条件行收起、条件清空、行数复原
+  cfToggle('BU');
+  const g3 = grab('BU'), closed = !/tr class="cfr"/.test(g3);
+  const after = rows(g3).length;
+  const cleared = !state.cf['BU'] && !state.cfOpen['BU'];
+  // ④ 只选运算符、数值还没填：运算符要留住（以前会被重画重置回 ">"），且不参与过滤
+  state.cfOpen['BU'] = true; renderAll();
+  cfApply('mRate', '≤', '', 'BU', false);
+  const g4 = grab('BU');
+  const opKept = /<option value="≤" selected>/.test(g4);
+  const noFilter = rows(g4).length === before && cfCount('BU') === 0;
+  cfToggle('BU');
+  // ⑤ 站点明细表同一套（Node 桩的 siteMatrix 快照不随 renderSite 刷新，行数变化已在真实浏览器核对 2→1）
+  const siteBtn = /data-cfopen="_site"/.test(store['id:siteTools']||'');
+  state.cf['_site'] = {mRate:{op:'≥', v:100}};
+  const siteKeep = [cfMatch({a:34363,f4:30198.2},'_site'), cfMatch({a:4960,f4:5208.7},'_site')];
+  delete state.cf['_site'];
+  return '按钮='+hasBtn+' 展开条件行='+rowOpen+' 输入格='+cells+'/'+ops+' 清空键='+hasClr
+    +' 展开即高亮='+btnOnOpen+' 原'+before+' 条件>0→'+keep+' 条件>1e12→'+drop
+    +' 计数='+cntTxt+' 空态提示='+emptyOk+' 再点收起='+closed+' 条件已清='+cleared+' 行数复原='+(after===before)
+    +' 运算保留='+opKept+' 空值不过滤='+noFilter+' 站点表='+siteBtn+' 站点≥100%→'+siteKeep.join('/')
+    +' 判定='+(hasBtn&&rowOpen&&cells===ops&&cells>=15&&hasClr&&btnOnOpen&&keep===before&&drop===0
+      &&emptyOk&&closed&&cleared&&after===before&&opKept&&noFilter&&siteBtn&&siteKeep[0]===true&&siteKeep[1]===false?'OK':'FAIL');
+})();
 out.矩阵 = (store['id:siteMatrix']||'').replace(/<[^>]+>/g,' ').replace(/\\s+/g,' ').trim().slice(0,200);
 out.trendWin = (store['txt:id:trendWin']||'') + ' | 指标数=' + (store['id:trendMetric']||'').match(/<option/g)?.length;
 out.trendWin_full = (()=>{
@@ -864,6 +908,56 @@ out.Q4冲销异常 = (()=>{
       + ' | 展开 ' + collapsed + '→' + expanded + '/' + exp0.length + ' 收起按钮=' + moreBtn
       + ' | 跟随站点筛选=' + follow + (ok?' OK':' ✕');
   }catch(e){ return 'ERR:'+e.message; }
+})();
+
+out.Q4筛选 = (()=>{
+  // Q4 4 张卡片表头也补了同一套「点开→表头下面一行条件→再点收起」
+  const key = 'share:三级分类';
+  const first = () => (store['id:q4Grid']||'').split('<div class="q4card"')[1] || '';
+  const rowN = h => (h.match(/class="q4nm q4clk"/g)||[]).length;
+
+  document.body.classList.add('q4-only');
+  delete state.cfOpen[key]; delete state.cf[key];
+  renderQ4();
+  const g0 = store['id:q4Grid']||'';
+  const hasBtn = /data-cfopen="share:三级分类"/.test(g0);
+  const closed0 = !/<tr class="cfr">/.test(g0);
+
+  state.cfOpen[key] = true; renderQ4();
+  const g1 = store['id:q4Grid']||'';
+  const rowOpen = /<tr class="cfr">/.test(g1);
+  const cells = (first().match(/data-cfv="[^"]+"/g)||[]).length;   // 6 个数值列
+  const hasClr = /data-cfclr="share:三级分类"/.test(g1);
+  const before = rowN(first());
+  const entries = (store['id:q4JumpN']||'');
+
+  // 加权缺口 > 0：只留正缺口项
+  state.cf[key] = {gap:{op:'>', v:0}}; renderQ4();
+  const g2 = store['id:q4Grid']||'';
+  const after = rowN(first());
+  const cntTxt = (first().match(/class="q4n">([^<]*)</)||[])[1]||'';
+  const btnOn = /class="q4exp on"/.test(g2);
+  const entries2 = (store['id:q4JumpN']||'');          // 入口数字不受表内筛选影响
+  const m2 = cntTxt.match(/(\\d+) \\/ (\\d+)/);
+  const hitN = m2? +m2[1] : 0, allN = m2? +m2[2] : 0;
+  const capOk = after === Math.min(10, hitN);          // 默认只展示 TOP10
+  // ∞ 天数按无穷大参与比较
+  const infOk = q4CfMatch({curF1:100, curA:50, curGap:50, inv:[10,0,'∞']}, key) === true
+             && q4CfMatch({curF1:100, curA:50, curGap:-5, inv:[10,0,'∞']}, key) === false;
+
+  // 再点一次收起 = 复原
+  cfToggle(key);
+  const g3 = store['id:q4Grid']||'';
+  const closed = !/<tr class="cfr">/.test(g3);
+  const restored = rowN(first()) === before && !state.cf[key];
+
+  document.body.classList.remove('q4-only');
+  renderAll();
+  return '按钮='+hasBtn+' 默认收起='+closed0+' 展开='+rowOpen+' 输入格='+cells+' 清空键='+hasClr
+    +' 原'+before+' 缺口>0→'+after+'（命中'+hitN+'/'+allN+' 展示前10='+capOk+'）'+' 计数='+cntTxt+' 按钮高亮='+btnOn+' 入口不变='+(entries===entries2)
+    +' ∞参与比较='+infOk+' 再点收起='+closed+' 复原='+restored
+    +' 判定='+(hasBtn&&closed0&&rowOpen&&cells===6&&hasClr&&after>0&&capOk&&hitN>0&&hitN<allN&&btnOn
+      &&entries===entries2&&infOk&&closed&&restored?'OK':'FAIL');
 })();
 
 console.log(JSON.stringify(out,null,1));

@@ -283,6 +283,35 @@ table.wide .c-name .cnm{display:inline-block;vertical-align:middle}
 .fpop .fpf button:hover{border-color:#9db4e0;color:var(--accent);background:var(--accent-soft)}
 .fpop .fpf button.pri{margin-left:auto;background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
 .fpop .fpf button.pri:hover{background:#2549b8;color:#fff}
+/* ---------- 表头条件筛选（每张表右上「筛选」） ---------- */
+.cfbtn{display:inline-flex;align-items:center;gap:5px;font-family:inherit;font-size:12px;color:var(--ink2);
+  background:#fff;border:1px solid var(--line);border-radius:8px;padding:5px 11px;cursor:pointer;transition:.15s;
+  white-space:nowrap;flex:0 0 auto}
+/* 全局 svg{width:100%} 会把按钮里的漏斗图标拉满整行，这里单独锁死尺寸 */
+.cfbtn svg{display:inline-block;width:9px;height:9px;flex:0 0 auto}
+.cfbtn:hover{border-color:#b9c8e2;color:var(--accent)}
+.cfbtn.on{border-color:#9db4e0;background:var(--accent-soft);color:var(--accent);font-weight:600}
+.cfbtn b{font-weight:700}
+/* 条件行：紧贴表头下方的一整行，每列一个「运算符 + 数值」 */
+table.wide thead tr.cfr th,table.q4t thead tr.cfr th{background:#f4f8ff;border-bottom:1px solid var(--line2);
+  padding:3px 2px;font-size:10px;font-weight:400;vertical-align:middle;white-space:nowrap;color:var(--ink2)}
+table.wide thead tr.cfr th.stk{background:#eef4fd}
+table.wide thead tr.cfr th.cfcell,table.q4t thead tr.cfr th.cfcell{position:relative}
+.cfr .cfin{display:flex;align-items:center;gap:2px;min-width:0}
+.cfr .cfo{flex:0 0 29px;width:29px;box-sizing:border-box;font-family:inherit;font-size:10px;line-height:1.5;
+  color:#5b6b8a;background:#fff;border:1px solid #d7e0ef;border-radius:4px;padding:0 8px 0 0;
+  -webkit-appearance:none;appearance:none;text-align:center;text-align-last:center;cursor:pointer;
+  background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='4'%3E%3Cpath d='M0 0h6L3 4z' fill='%238a99b5'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 2px center}
+.cfr .cfv{flex:1 1 auto;min-width:0;width:100%;box-sizing:border-box;font-family:inherit;font-size:10.5px;
+  color:#2b3a55;background:#fff;border:1px solid #d7e0ef;border-radius:4px;padding:1px 3px;outline:none;
+  -moz-appearance:textfield}
+.cfr .cfv::-webkit-outer-spin-button,.cfr .cfv::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.cfr .cfo:focus,.cfr .cfv:focus{border-color:#9db4e0;box-shadow:0 0 0 2px rgba(47,91,215,.12)}
+.cfr .cfv::placeholder{color:#b9c4d8}
+.cfr .cfclr{font-family:inherit;font-size:10.5px;color:var(--ink2);background:#fff;border:1px solid #d7e0ef;
+  border-radius:5px;padding:1px 7px;cursor:pointer;line-height:1.6}
+.cfr .cfclr:hover{color:#c0392b;border-color:#e6bdb7}
 /* ---------- KPI ---------- */
 /* 7 个 KPI 恒定排成一行（用户要求）；窗口太窄时才退回自适应换行，避免卡片被压得没法读 */
 .kpis{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:12px;padding:14px 16px 4px}
@@ -474,6 +503,10 @@ body.q4-only .sidenav .navi .nt{white-space:normal;overflow:visible;text-overflo
   border:1px solid var(--line);background:#fff;border-radius:7px;font-family:inherit;
   font-size:11.5px;font-weight:600;color:var(--muted);cursor:pointer;white-space:nowrap}
 .q4exp:hover{color:var(--accent);border-color:#cfdcfb;background:#f4f7fd}
+/* Q4 卡片头的「筛选」与「导出」同款高度；展开或带条件时高亮 */
+.q4exp.on{color:var(--accent);border-color:#9db4e0;background:var(--accent-soft)}
+.q4exp svg{display:inline-block;width:9px;height:9px;flex:0 0 auto}
+.q4exp b{font-weight:700}
 .q4tw{overflow:auto}
 table.q4t{width:100%;min-width:1140px;border-collapse:collapse;table-layout:fixed}
 table.q4t th{font-size:11px;font-weight:600;color:var(--muted);background:#f7f9fd;text-align:center;
@@ -624,6 +657,8 @@ let TWIN = 4;          // 趋势图默认展示最近几个周期
 const state = { mode:null,            // 当前粒度 key
                 pidx: 0, site:'ALL', bizGroup:'ALL', elim:'ALL', drill:{}, sort:{}, top:{}, hide:{}, hideCols:{}, trendIdx:'mRate',
                 hideAux:{},   // 附属列（国家Listing 表的三级分类）局部筛选：dimKey → 排除集合
+                cf:{},        // 表头条件筛选：tableKey → {列key: {op:'>'|'≥'|'<'|'≤'|'=', v:数值}}
+                cfOpen:{},    // 哪些表的「筛选条件行」是展开的：tableKey → true
                 colW:{} };    // 自定义列宽：tableKey -> 宽度数组（拖动表头边界调整）
 let ELIM_SET = new Set(); // 命中巴西淘汰清单的 SKU 维度下标（loadMode 时计算）
 let CROSS_CATS = new Set(); // 同名跨 BU 的三级分类下标（只有这些行按 BU 拆行 + 标注 BU）
@@ -690,7 +725,7 @@ function loadMode(key){
     for(const [c, s] of seen){ if(s.size>1) CROSS_CATS.add(c); }
   }
   state.pidx = D.periods.length-1;
-  state.site = 'ALL'; state.bizGroup = 'ALL'; state.elim = 'ALL'; state.drill = {}; state.drillBu = {}; state.hide = {}; state.hideAux = {}; state.top = {}; state.q4more = {}; state.trendIdx = state.trendIdx || 'mRate';
+  state.site = 'ALL'; state.bizGroup = 'ALL'; state.elim = 'ALL'; state.drill = {}; state.drillBu = {}; state.hide = {}; state.cf = {}; state.cfOpen = {}; state.hideAux = {}; state.top = {}; state.q4more = {}; state.trendIdx = state.trendIdx || 'mRate';
   state.sort = {}; DIM_KEYS.forEach(k=>{ state.sort[k] = {k:'a', dir:-1}; });   // 默认各表都按订单销量从高到低
   state.sort['_site'] = {k:'a', dir:-1};
   document.title = `拉美销售预测达成看板`;
@@ -906,7 +941,7 @@ function renderSite(){
   const cur = recsFor({});
   const tot = sumRecs(cur);
   const scopeTxt = `${periodLabel(state.pidx)}｜${state.site==='ALL'?'全部站点':D.sites[state.site].name}`;
-  document.getElementById('siteTools').innerHTML = exportBtnHTML('_site') + colBtnHTML('_site');
+  document.getElementById('siteTools').innerHTML = cfBtnHTML('_site') + exportBtnHTML('_site') + colBtnHTML('_site');
   document.querySelector('#siteTools [data-colopen]').onclick=(ev)=>{ ev.stopPropagation(); openColPop(ev.currentTarget, '_site'); };
   document.querySelector('#siteTools [data-export]').onclick=(ev)=>{ ev.stopPropagation(); exportTableCSV('_site'); };
   document.getElementById('siteScope').textContent = scopeTxt;
@@ -1011,9 +1046,10 @@ function renderSite(){
 
   // 站点明细表：与业务组等维度板块同一套 15 列指标表头，表头可点击排序（默认订单销量从高到低）
   // 默认排序下墨西哥站（销量远高于巴西站）仍排在最前，与上方卡片/筛选顺序一致
-  const siteRows = sortRows(
+  const siteRowsAll = sortRows(
     siteList.map(i=>Object.assign({name:D.sites[i].name, sid:i}, sumRecs(cur.filter(r=>r.s===i)))),
     state.sort['_site'] || DEF_SORT);
+  const siteRows = (cfCount('_site')>0)? siteRowsAll.filter(r=>cfMatch(r, '_site')) : siteRowsAll;
   document.getElementById('siteTableScope').textContent = siteList.length>1
     ? `· ${D.sites.map(s=>s.name).join(' / ')}` : `· ${D.sites[siteList[0]].name}`;
   document.getElementById('siteMatrix').innerHTML =
@@ -1497,6 +1533,126 @@ document.addEventListener('click', ev=>{
   closeFilter();
 });
 document.addEventListener('keydown', ev=>{ if(ev.key==='Escape') closeFilter(); });
+
+/* ---------- 表头条件筛选（每张表右上「筛选」按钮） ----------
+   点「筛选」→ 表头下面就地展开一行，逐列填条件（> ≥ < ≤ =  + 数值），再点一次收起并复原。
+   跟「按名称勾选」的筛选是两回事：这里按**指标列做数值比较**，
+   回答的是「M版达成 < 80% 的有哪些」「加权缺口 > 1000 的有哪些」。
+   状态按表存：state.cf[表key] = {列key: {op, v}}；state.cfOpen[表key] = 条件行是否展开。 */
+const CF_OPS = ['>','≥','<','≤','='];
+/* 比率列：输入按百分数理解（输 80 = 80%），与画面上显示的数字一致 */
+const CF_PCT = new Set(['mRate','m1Rate','wRate','mOosRate','wOosRate','bandShare','bandShare4']);
+let cfTimer = null;
+/* 只统计「已经填了数值」的条件：只选了运算符还没填数，不算生效 */
+const cfLive = (key)=>{
+  const bag = state.cf[key]||{};
+  return Object.keys(bag).filter(k=>bag[k] && bag[k].v!=null && isFinite(bag[k].v));
+};
+const cfCount = (tblKey)=> cfLive(tblKey).length;
+const cfBtnHTML = (tblKey)=>{
+  const n = cfCount(tblKey), open = !!state.cfOpen[tblKey];
+  return `<button class="cfbtn${(open||n)?' on':''}" data-cfopen="${esc(tblKey)}"`
+    + ` title="${open?'收起筛选条件行':'点开后在表头下面逐列填筛选条件'}">${FUNNEL}筛选${n?`<b>${n}</b>`:''}</button>`;
+};
+/* 单个条件格：运算符下拉 + 数值输入（窄列也放得下） */
+function cfCellHTML(tblKey, c){
+  const cur = (state.cf[tblKey]||{})[c.k] || {op:'>', v:''};
+  const pct = CF_PCT.has(c.k);
+  return `<th class="cfcell" data-c="${c.k}"><span class="cfin">`
+    + `<select class="cfo" data-cfo="${c.k}" title="比较方式">`
+    + CF_OPS.map(o=>`<option value="${o}"${cur.op===o?' selected':''}>${o}</option>`).join('')
+    + `</select>`
+    + `<input class="cfv" type="number" step="any" inputmode="decimal" data-cfv="${c.k}"`
+    + ` value="${cur.v==null||cur.v===''?'':cur.v}" placeholder="${pct?'%':'—'}"`
+    + ` title="${esc(c.t)}：${pct?'按百分数填，如 80':'按数值填'}">`
+    + `</span></th>`;
+}
+/* 单个比较：运算符 + 阈值。主看板与 Q4 卡片共用 */
+function cfHit(v, op, t){
+  if(op==='>')  return v >  t;
+  if(op==='≥') return v >= t;
+  if(op==='<')  return v <  t;
+  if(op==='≤') return v <= t;
+  return Math.abs(v-t) < 1e-9;
+}
+function cfMatch(o, tblKey){
+  const f = state.cf[tblKey];
+  if(!f) return true;
+  for(const k in f){
+    const def = COL_DEF.find(c=>c.k===k);
+    if(!def) continue;
+    const r0 = f[k];
+    if(!r0 || r0.v==null || !isFinite(r0.v)) continue; // 只选了运算符、还没填数 → 先不参与过滤
+    let v = def.v(o);
+    if(v==null || !isFinite(v)) return false;          // 有筛选条件时，空值一律不显示
+    if(CF_PCT.has(k)) v = v*100;                      // 比率列换成百分数与输入对齐
+    if(!cfHit(v, r0.op, r0.v)) return false;
+  }
+  return true;
+}
+/* 重画受影响的表（条件行就在表里，重画后原样还在） */
+function cfRenderTable(key){
+  if(String(key).indexOf(':')>=0){                    // Q4 卡片：key = 'kind:维度'
+    if(typeof renderQ4==='function') renderQ4();
+    return;
+  }
+  if(key==='_site') renderSite();
+  else { const sec = blockOf(key); if(sec) renderDim(sec); }
+}
+/* 数字边打边生效（防抖）；重画会换掉输入框，所以把焦点和光标位置补回来 */
+function cfApply(k, op, v, key, refocus){
+  const bag = state.cf[key] || (state.cf[key]={});
+  const num = (v===''||v==null) ? NaN : +v;
+  /* 就算数值没填也把运算符存下来（v=null），否则重画后下拉框会被重置回 ">"
+     —— 用户点 ≥ 却跳回 > 的元凶。真正是否参与过滤由 cfMatch/cfCount 判 v!=null */
+  bag[k] = {op:op, v: isFinite(num) ? num : null};
+  cfRenderTable(key);
+  if(refocus){
+    const el = document.querySelector(`table[data-tkey="${key}"] [data-cfv="${k}"]`);
+    if(el){ el.focus(); const n = String(el.value).length;
+      try{ el.setSelectionRange(n, n); }catch(err){ /* number 输入在某些浏览器不支持选区 */ } }
+  }
+}
+/* 筛选按钮：展开 / 收起（收起即复原，条件一并清掉） */
+function cfToggle(key){
+  if(state.cfOpen[key]){
+    delete state.cfOpen[key];
+    delete state.cf[key];
+  }else{
+    state.cfOpen[key] = true;
+  }
+  cfRenderTable(key);
+}
+document.addEventListener('click', ev=>{
+  const t = ev.target.closest('[data-cfopen]');
+  if(t){ ev.stopPropagation(); cfToggle(t.dataset.cfopen); return; }
+  const c = ev.target.closest('[data-cfclr]');
+  if(c){ ev.stopPropagation(); delete state.cf[c.dataset.cfclr]; cfRenderTable(c.dataset.cfclr); }
+});
+document.addEventListener('change', ev=>{
+  const s = ev.target.closest('select[data-cfo]'); if(!s) return;
+  const tbl = s.closest('table'); const key = tbl && tbl.dataset.tkey; if(!key) return;
+  const inp = s.parentNode.querySelector('input[data-cfv]');
+  clearTimeout(cfTimer);
+  cfApply(s.dataset.cfo, s.value, inp? inp.value : '', key, true);
+});
+document.addEventListener('input', ev=>{
+  const i = ev.target.closest('input[data-cfv]'); if(!i) return;
+  const tbl = i.closest('table'); const key = tbl && tbl.dataset.tkey; if(!key) return;
+  const sel = i.parentNode.querySelector('select[data-cfo]');
+  clearTimeout(cfTimer);
+  cfTimer = setTimeout(()=>cfApply(i.dataset.cfv, sel? sel.value : '>', i.value, key, true), 320);
+});
+/* 回车收起软键盘 / 直接生效 */
+document.addEventListener('keydown', ev=>{
+  if(ev.key!=='Enter') return;
+  const i = ev.target.closest && ev.target.closest('input[data-cfv]'); if(!i) return;
+  ev.preventDefault(); cfTimer && clearTimeout(cfTimer);
+  const tbl = i.closest('table'); const key = tbl && tbl.dataset.tkey; if(!key) return;
+  const sel = i.parentNode.querySelector('select[data-cfo]');
+  cfApply(i.dataset.cfv, sel? sel.value : '>', i.value, key, false);
+});
+
 /* 页面滚动或窗口缩放时，弹出层位置会失真，直接收起 */
 /* 窗口缩放时：趋势图按新宽度重绘（宽度变化超过 60px 才重绘，避免抖动） */
 window.addEventListener('resize', ()=>{
@@ -1576,6 +1732,10 @@ function exportTableCSV(tblKey){
   const headers = [];
   table.querySelectorAll('thead th').forEach(th=>{
     if(th.hasAttribute('colspan')) return;   // 跳过 "订单达成率" 等分组标题
+    // 跳过「筛选条件行」（里面是输入框/下拉，不是表头）
+    const inCfr = th.closest ? th.closest('tr.cfr')
+      : (th.parentNode && /(^|\s)cfr(\s|$)/.test(th.parentNode.className||''));
+    if(inCfr) return;
     if(!keep(th)) return;                    // 自定义列里被取消勾选的列不导出
     const t = th.textContent.replace(/[⇅▼▲]+/,'').trim();
     if(t) headers.push(t);
@@ -1743,6 +1903,18 @@ function wideTable(shown, colLabel, curTot, onName, filterKey, fstat, colw, twoC
     ? `<button class="fbtn${fstat&&fstat.active?' on':''}" data-fopen="${esc(filterKey)}" title="筛选：勾选要显示的项目">${FUNNEL}${fstat&&fstat.active?`<b>${fstat.shown}/${fstat.all}</b>`:''}</button>`
     : '';
   const abtn = c => `<button class="fbtn${c.fstat&&c.fstat.active?' on':''}" data-fopen="${esc(c.fkey)}" title="筛选：勾选要显示的${esc(c.label)}">${FUNNEL}${c.fstat&&c.fstat.active?`<b>${c.fstat.shown}/${c.fstat.all}</b>`:''}</button>`;
+  /* 条件行：点右上「筛选」后在表头下面就地展开，逐列填 >≥<≤= + 数值；再点一次收起并复原 */
+  const cfKey = tblKey || '';
+  const cfRow = state.cfOpen[cfKey]
+    ? `<tr class="cfr">
+        <th class="stk c-rank"></th>
+        ${auxN? auxCols.map((c,i)=>`<th class="stk ${i===0?'c-name3':'c-name4'}"></th>`).join('') : ''}
+        ${twoCol
+          ? `<th class="stk c-name"><button class="cfclr" data-cfclr="${esc(cfKey)}">清空条件</button></th><th class="stk c-name2"></th>`
+          : `<th class="stk c-name"><button class="cfclr" data-cfclr="${esc(cfKey)}">清空条件</button></th>`}
+        ${visCols.map(c=>cfCellHTML(cfKey, c)).join('')}
+      </tr>`
+    : '';
   const head = `<colgroup>${cols}</colgroup><thead>
       <tr>
         <th class="stk c-rank" rowspan="2">#${rz(0)}</th>
@@ -1752,7 +1924,7 @@ function wideTable(shown, colLabel, curTot, onName, filterKey, fstat, colw, twoC
           : `<th class="stk c-name" rowspan="2"><span class="cnm">${colLabel}</span>${fbtn}${rz(1+auxN)}</th>`}
         ${grpRow}
       </tr>
-      <tr>${idxRow}</tr>
+      <tr>${idxRow}</tr>${cfRow}
     </thead>`;
   const spanN = visCols.length;
   const auxOf = r => auxCols ? auxCols.map(c=>c.map.get(r.id)) : null;
@@ -1764,7 +1936,7 @@ function wideTable(shown, colLabel, curTot, onName, filterKey, fstat, colw, twoC
   const isOn = r => onName!=null && r.name===onName && (!onBu || r.bu===onBu);
   const body = shown.length
     ? shown.map((r,i)=>rowHTML(r,i,colLabel,curTot, isOn(r), twoCol, auxOf(r), clkRate)).join('')
-    : `<tr><td class="stk c-rank"></td>${auxEmpty}<td class="stk c-name" style="font-weight:400;color:var(--muted)">已全部筛除</td>${twoCol?'<td class="stk c-name2"></td>':''}<td colspan="${spanN}" style="text-align:center;color:var(--muted)">点击表头筛选按钮重新勾选要显示的项目</td></tr>`;
+    : `<tr><td class="stk c-rank"></td>${auxEmpty}<td class="stk c-name" style="font-weight:400;color:var(--muted)">无匹配行</td>${twoCol?'<td class="stk c-name2"></td>':''}<td colspan="${spanN}" style="text-align:center;color:var(--muted)">当前筛选条件没有匹配项，点右上「筛选」改条件，或点「清空条件」复原</td></tr>`;
   const hideAttr = [...hideAll].join(' ');
   return `<div class="tscroll"><table class="wide${auxN?' lst':''}" style="min-width:${totalW}px;${stkVar}"`
     + ` data-tkey="${esc(tblKey||'')}" data-headn="${headN}" data-auxn="${auxN}" data-twocol="${twoCol?'1':'0'}"`
@@ -1907,7 +2079,10 @@ function dimBlock(section, dimKey, blockNo){
         const o=c.map.get(r.id); return o && !c.hide.has(o.name);
       }))
     : rowsAll;
-  const base = (hide&&hide.size)? rows.filter(r=>!hide.has(r.name)) : rows;
+  const base0 = (hide&&hide.size)? rows.filter(r=>!hide.has(r.name)) : rows;
+  /* 表头条件筛选（右侧「筛选」按钮设的 >/</= 条件）：在名称筛选之后再过一遍 */
+  const cfOn = cfCount(dimKey)>0;
+  const base = cfOn? base0.filter(r=>cfMatch(r, dimKey)) : base0;
   const topN = state.top[dimKey]||DEF_TOP[dimKey]||12;
   const shown = base.slice(0, topN);
   const fstat = {active: !!(hide&&hide.size), shown: base.length, all: rows.length};
@@ -1917,7 +2092,7 @@ function dimBlock(section, dimKey, blockNo){
       <div class="btitle"><span class="bnum">${blockNo}</span><h2>${DIM_LABEL[dimKey]}</h2>
         <span class="cnt">${base.length!==rowsAll.length? `${base.length} / ${rowsAll.length} 项` : `${rowsAll.length} 项`}</span>
         ${scoped?`<span class="scoped">已受上级下钻过滤</span>`:''}</div>
-      <div class="block-tools">${exportBtnHTML(dimKey)}${colBtnHTML(dimKey)}</div>
+      <div class="block-tools">${cfBtnHTML(dimKey)}${exportBtnHTML(dimKey)}${colBtnHTML(dimKey)}</div>
     </div>
     <div class="block-body">
       ${rowsAll.length? compBar(shown, base, DIM_LABEL[dimKey]) : ''}
@@ -2185,7 +2360,47 @@ function q4Pareto(rows, total, n){
   }
   return { total: t, top10: topN, topN: n||Q4_TOP, p10: topN/t, k40: k };
 }
-function q4CardHTML(kind, dimKey, rows, per, idx, scopeGap){
+/* Q4 清单的可筛选数值列（表头下面那行条件用的）。
+   判定列是文字、近 N 期是多项拼在一起，都不参与数值筛选。 */
+const Q4_CF = {
+  f1:   {k:'f1',   t:'加权预测',           v:r=>r.curF1},
+  a:    {k:'a',    t:'订单销量',           v:r=>(r.curA==null?0:r.curA)},
+  gap:  {k:'gap',  t:'加权缺口',           v:r=>r.curGap},
+  inv0: {k:'inv0', t:'FBA总可销售展示库存', v:r=>r.inv? r.inv[0] : null},
+  d7:   {k:'d7',   t:'7DMS',               v:r=>r.inv? r.inv[1] : null},
+  days: {k:'days', t:'可售天数',           v:r=>{
+    if(!r.inv) return null;
+    const d=r.inv[2];
+    if(d==='∞') return Infinity;              // ∞ 视为无穷大，"> 30" 时应当命中
+    return (d==null || d==='') ? null : +d;
+  }}
+};
+function q4CfMatch(r, key){
+  const f = state.cf[key]; if(!f) return true;
+  for(const k in f){
+    const d = Q4_CF[k]; if(!d) continue;
+    const c = f[k];
+    if(!c || c.v==null || !isFinite(c.v)) continue;     // 只选运算符没填数 → 不过滤
+    const v = d.v(r);
+    if(v==null || Number.isNaN(v)) return false;        // 有条件下空值不显示（∞ 例外，按无穷大比）
+    if(!cfHit(v, c.op, c.v)) return false;
+  }
+  return true;
+}
+const q4CfRows = (key, rows)=> (cfCount(key)>0) ? rows.filter(r=>q4CfMatch(r,key)) : rows;
+/* 条件行：11 列里只有 6 个数值列给输入框，名称列放「清空条件」 */
+function q4CfRowHTML(key){
+  if(!state.cfOpen[key]) return '';
+  const cell = k => cfCellHTML(key, Q4_CF[k]);   // 它本身已经带 <th class="cfcell">，别再套一层
+  return `<tr class="cfr">
+    <th></th>
+    <th style="text-align:left;padding-left:8px"><button class="cfclr" data-cfclr="${esc(key)}">清空条件</button></th>
+    <th></th>
+    ${cell('f1')}${cell('a')}${cell('gap')}${cell('inv0')}${cell('d7')}${cell('days')}
+    <th></th><th></th>
+  </tr>`;
+}
+function q4CardHTML(kind, dimKey, rows, per, idx, scopeGap, totalN){
   const N = q4TopN(dimKey);
   const cfg=Q4_CFG[kind], key=kind+':'+dimKey;
   const more = !!(state.q4more && state.q4more[key]);
@@ -2226,10 +2441,12 @@ function q4CardHTML(kind, dimKey, rows, per, idx, scopeGap){
     : `本期当前筛选的总加权缺口为 0，暂无可比口径。`;
   return `<div class="q4card"${idx!=null?` id="q4c-${idx}"`:''}>
     <div class="q4h"><b>${cfg.label}</b><span class="q4sub">${DIM_LABEL[dimKey]||dimKey}</span>
-      <span class="q4n">${rows.length} 项</span>
+      <span class="q4n">${rows.length}${(totalN!=null&&totalN!==rows.length)?` / ${totalN}`:''} 项</span>
+      <button class="q4exp${state.cfOpen[key]?' on':''}" type="button" data-cfopen="${esc(key)}"
+        title="在表头下面展开一行条件（> ≥ < ≤ = + 数值），再点收起并复原">${FUNNEL}筛选${cfCount(key)?`<b>${cfCount(key)}</b>`:''}</button>
       <button class="q4exp" type="button" data-q4exp="${key}" title="导出本表全部 ${rows.length} 项为 CSV（跟随当前筛选）">⬇ 导出</button></div>
     <div class="q4sum">${sumLine}</div>
-    <div class="q4tw"><table class="q4t">
+    <div class="q4tw"><table class="q4t" data-tkey="${esc(key)}">
       <colgroup>
         <col style="width:8%"><col style="width:13%"><col style="width:7%"><col style="width:7%">
         <col style="width:7%"><col style="width:7%"><col style="width:11%"><col style="width:5.5%">
@@ -2243,7 +2460,7 @@ function q4CardHTML(kind, dimKey, rows, per, idx, scopeGap){
         <th title="墨西哥站（MX）FBA 总可销售展示库存">FBA总可销售展示库存</th>
         <th title="墨西哥站（MX）近 7 天日均销量">7DMS</th>
         <th title="墨西哥站（MX）可售天数 = 总可销售展示库存 ÷ 7DMS">可售天数</th>
-        <th>${seqHead}</th><th>判定</th></tr></thead>
+        <th>${seqHead}</th><th>判定</th></tr>${q4CfRowHTML(key)}</thead>
       <tbody>${body}</tbody></table></div>
     ${rest>0 || more ? `<button class="q4more" data-q4more="${key}">${more? '收起 ▴' : `展开其余 ${rest} 项 ▾`}</button>` : ''}
   </div>`;
@@ -2334,10 +2551,11 @@ function renderQ4(){
   const hit={'三级分类':new Set(), '国家Listing':new Set()};
   const scopeGap = q4ScopeGap();      // 四张清单一律用同一个「整体加权缺口」作分母
   host.innerHTML = blocks.map(([k,d],i)=>{
-    const rows=q4Rows(k,d);
-    q4Last[k+':'+d]=rows;                 // 导出用：当前筛选下的完整清单
-    rows.forEach(r=> hit[d].add(r.idx));
-    return q4CardHTML(k, d, rows, per, i, scopeGap);
+    const all=q4Rows(k,d);
+    const rows=q4CfRows(k+':'+d, all);    // 表头条件行生效时只留命中项
+    q4Last[k+':'+d]=rows;                 // 导出用：当前筛选下的完整清单（不受展开/收起影响）
+    all.forEach(r=> hit[d].add(r.idx));   // 顶部入口数字始终按全量去重计数
+    return q4CardHTML(k, d, rows, per, i, scopeGap, all.length);
   }).join('');
   const jn=document.getElementById('q4JumpN');
   if(jn) jn.innerHTML = `三级分类 <b>${hit['三级分类'].size}</b> · Listing <b>${hit['国家Listing'].size}</b>`;
