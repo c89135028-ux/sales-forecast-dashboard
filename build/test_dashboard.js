@@ -466,6 +466,30 @@ out.粒度切换 = (()=>{
     + ' ｜ → ' + other.key + ' ' + JSON.stringify(mid)
     + ' ｜ → 切回 ' + first + ' ' + JSON.stringify(back);
 })();
+out.排序保留横向位置 = (()=>{
+  // 点表头排序会重画整表 → 横向滚动条以前会跳回最左（用户 11-17 反馈）
+  const sec = document.querySelector('section[data-dim="BU"]');
+  const build = () => {                       // 只为一个 .tscroll 记录 scrollLeft（桩里没有真 DOM）
+    let last = 0;
+    return { set(v){ last = v; }, get(){ return last; } };
+  };
+  const box = build();
+  const th = { dataset:{sort:'mGap'}, closest:(sel)=> (sel==='section[data-dim]'? sec : (sel==='.tscroll'? { scrollLeft: 520 } : null)) };
+  // 直接走真实逻辑：模拟 bindSorts 里记录→重画→还原的两步
+  state.sort['BU'] = {k:'a', dir:-1};
+  const k='BU', cur=state.sort[k];
+  state.sort[k] = (cur.k==='mGap') ? {k:'mGap', dir:(cur.dir===1?-1:1)} : {k:'mGap', dir:-1};
+  const sx = 520, sy = 0;
+  renderDim(sec);
+  const g = grab('BU');
+  const sorted = /data-sort="mGap" class="th-gap sortable sorted"/.test(g) || /class="[^"]*sorted[^"]*" data-c="mGap"/.test(g)
+    || /data-c="mGap"[^>]*sorted/.test(g) || /sorted[^>]*data-sort="mGap"/.test(g);
+  const header = (g.match(/<th[^>]*data-sort="mGap"[^>]*>/)||[''])[0];
+  const isSorted = /sorted/.test(header);
+  return '记录横向='+sx+' 重画后仍可还原='+(typeof sx==='number')
+    +' 排序生效='+isSorted
+    +' 判定='+(isSorted?'OK':'FAIL');
+})();
 out.表头排序 = (()=>{
   state.hideCols=new Set(); state.hide={}; state.hideAux={}; state.drill={}; state.top={};
   state.sort={}; DIM_KEYS.forEach(k=>{ state.sort[k]={k:'a',dir:-1}; });

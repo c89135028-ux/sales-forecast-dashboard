@@ -1296,10 +1296,17 @@ function bindSorts(scope){
         if(ev.target.closest && (ev.target.closest('.rz') || ev.target.closest('.fbtn'))) return;
         const k=th.dataset.sort, cur=state.sort[key]||DEF_SORT;
         state.sort[key] = (cur.k===k) ? {k:k, dir:(cur.dir===1? -1 : 1)} : {k:k, dir:-1};
-        const sec=tb.closest('section[data-dim]');
+        /* 重画会把表格换成新节点，横向滚动位置也跟着丢（表现为「一点排序就跳回第一列」）。
+           先把「纵向页面位置 + 该表横向滚动位置」记下来，重画后原样还回去。 */
+        const sc = tb.closest('.tscroll') || tb.parentNode;
+        const sx = (sc && sc.scrollLeft) || 0;
         const sy = window.scrollY || window.pageYOffset || 0;
+        const sec=tb.closest('section[data-dim]');
         if(sec) renderDim(sec); else renderSite();
-        requestAnimationFrame(()=>window.scrollTo(0, sy));
+        const sc2 = document.querySelector(`table[data-tkey="${key}"]`);
+        const host2 = sc2 && (sc2.closest('.tscroll') || sc2.parentNode);
+        if(host2 && sx) host2.scrollLeft = sx;
+        if(Math.abs((window.scrollY||0) - sy) > 1) window.scrollTo(0, sy);
       };
     });
   });
