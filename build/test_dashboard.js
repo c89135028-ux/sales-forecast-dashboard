@@ -479,7 +479,7 @@ out.标签重叠 = (()=>{
       for(let i=0;i<L.length;i++) for(let j=i+1;j<L.length;j++){
         const a=L[i], b=L[j];
         if(Math.abs(a.y-b.y)<12 && (Math.abs(a.x-b.x)-(a.w+b.w)/2) < 0)
-          bad.push(a.t+'@'+a.x.toFixed(0)+' ✕ '+b.t+'@'+b.x.toFixed(0)+' 差'+Math.abs(a.y-b.y).toFixed(0)+'px');
+          bad.push(a.t+'@x'+a.x.toFixed(0)+'/y'+a.y.toFixed(0)+' ✕ '+b.t+'@x'+b.x.toFixed(0)+'/y'+b.y.toFixed(0)+' 差'+Math.abs(a.y-b.y).toFixed(0)+'px');
       }
       return {n:L.length, bad};
     };

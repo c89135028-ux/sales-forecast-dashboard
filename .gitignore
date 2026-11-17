@@ -13,6 +13,7 @@ __pycache__/
 
 # 无头浏览器截图校验时产生的临时缓存与截图
 .edgetmp*/
+_*.png
 _q4*.png
 _shot*.png
 _probe.html

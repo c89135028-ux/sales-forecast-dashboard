@@ -1133,18 +1133,41 @@ function trendSVG(pred, periods, W0, mfd){
       ys[1] = Math.max(PT - 6, ys[0] - 14);          // 柱2 让到柱1 上方一行
       if(ys[0] - ys[1] < 14) ys[0] = ys[1] + 14;     // 顶部空间不够时反向把柱1 压到下面一行
     }
-    bars.forEach((b,k)=>{
-      const bx=b[0], top=b[1], v=b[2], col=b[3];
-      const hgt = PT + ph - top;
+    /* 三件东西共用一块竖向空间：柱1值、柱2值、折线百分比。
+       顺序很重要 —— 先把两柱彼此错开，再统一避让折线标签；
+       反过来的话「两柱互查」会把刚避开的柱值又推回折线旁边（实测只差 2px 仍压字）。 */
+    const plan = bars.map((b,k)=>{
+      const hgt = PT + ph - b[1];
+      let fy, inBar=false;
       if(rl != null && Math.abs(ys[k] - rl) < 12){
-        if(hgt >= 28 && bw >= 34){
-          s+=`<text class="bar-lbl" x="${bx.toFixed(1)}" y="${(top+14).toFixed(1)}" text-anchor="middle" fill="#ffffff" font-weight="700">${fmtK(v)}</text>`;
+        if(hgt >= 28 && bw >= 34){ fy = b[1] + 14; inBar = true; }
+        else { fy = rl - 13; }
+      }else{ fy = ys[k]; }
+      return {fy:fy, inBar:inBar, hgt:hgt};
+    });
+    if(Math.abs(plan[0].fy - plan[1].fy) < 14){
+      plan[1].fy = Math.max(PT-6, plan[0].fy - 14);            // 柱2 让到柱1 上方
+      if(plan[0].fy - plan[1].fy < 14) plan[0].fy = Math.min(PT+ph-6, plan[1].fy + 14);
+    }
+    /* 与折线标签抢位：上方优先；被顶边夹住就翻到下方，两个都翻下去时按 14px 阶梯排开 */
+    if(rl != null){
+      let upUsed=false, downN=0;
+      plan.forEach(p=>{
+        if(Math.abs(p.fy - rl) >= 14) return;
+        const top = PT + ph - p.hgt;
+        const up = Math.max(PT-6, rl - 16);
+        if(!upUsed && Math.abs(up - rl) >= 14){
+          p.fy = up; upUsed = true;
         }else{
-          s+=`<text class="bar-lbl" x="${bx.toFixed(1)}" y="${Math.max(PT-6, rl-13).toFixed(1)}" text-anchor="middle" fill="${col}" font-weight="600">${fmtK(v)}</text>`;
+          p.fy = Math.min(PT+ph-6, rl + 16 + downN*14); downN++;
         }
-      }else{
-        s+=`<text class="bar-lbl" x="${bx.toFixed(1)}" y="${ys[k].toFixed(1)}" text-anchor="middle" fill="${col}" font-weight="600">${fmtK(v)}</text>`;
-      }
+        p.inBar = p.inBar && p.fy >= top && p.fy <= PT+ph-6;
+      });
+    }
+    bars.forEach((b,k)=>{
+      const bx=b[0], v=b[2], col=b[3], fy=plan[k].fy;
+      const white = plan[k].inBar && fy >= b[1] && fy <= PT+ph-6;
+      s+=`<text class="bar-lbl" x="${bx.toFixed(1)}" y="${fy.toFixed(1)}" text-anchor="middle" fill="${white?'#ffffff':col}" font-weight="${white?700:600}">${fmtK(v)}</text>`;
     });
     s+=`<text class="axis-lbl" x="${cx.toFixed(1)}" y="${(PT+ph+16).toFixed(1)}" text-anchor="middle" fill="#5b6b8a">${D.periods[periods[i]].short}</text>`;
   });

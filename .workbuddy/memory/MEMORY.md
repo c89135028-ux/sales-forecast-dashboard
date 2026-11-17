@@ -6,7 +6,8 @@
   ⚠️ 源表是历史唯一来源（`data.json` 是聚合结果不能反解），构建要读、不能让用户清理。
 - `build/build_all.py` 一键 5 步：`build_data.py`(周→data.json) → `build_data_month.py`(月→data_month.json) → `build_inventory.py`(→inventory.json，库存三列) → `merge_data.py`(→data_all.json，注入 elimSkus/inv) → `build_html.py`(模板+数据→HTML)。单粒度排查：`build_html.py <data.json> <out.html>`。
 - **多源合并**：`SRCS` 顺序纵向拼接，同一「周期」以靠后的源为准（整周期替换）。先算每期归属源 `owner` 再整期取 —— ⚠️ 禁用 `drop_duplicates(subset=[时间列])`（会每期只留一行）。周 `TIME_COL='周首日'`、月 `'年月'`。加源前先比型（列集合+顺序一致）。
-- **当前源**：周 = (21)(24)(34)(36)(38)+`C:/Users/Thinkpad/Downloads/日明细数据 (1)`+`E:/ziel浏览器下载/日明细数据 (1)` → 11 周 8/23~11/01（24,566 行）；月 = (20)(25)(28)(32)(35)(39)+`.../日明细数据`+`.../日明细数据 (2)` → 5 月 7~11（11,345 行）。
+- **当前源**：周 = (21)(24)(34)(36)(38)+`C:/Users/Thinkpad/Downloads/日明细数据 (1)`+`E:/ziel浏览器下载/日明细数据 (1)`+`E:/ziel浏览器下载/日明细数据 (7)` → 12 周 8/23~11/14（26,865 行）；月 = (20)(25)(28)(32)(35)(39)+`.../日明细数据`+`.../日明细数据 (2)`+`.../日明细数据 (6)` → 5 月 7~11（11,391 行）。
+  `LATEST_ATTR_SRC` 始终跟随**最新的周表 + 月表**（11-17 起为 (6)+(7)），换源时两个 build_data*.py 都要同步改。
 - ⚠️ 源表末行「合计」会翻倍总量，先剔除 `时间列=='合计'`。
 - **换源标准动作**：append `SRCS` → `build_all.py` → `verify_data.py`（须 ALL CHECKS PASSED）→ `test_dashboard.js`（须 RUNTIME OK）→ `cp` 同步 index.html → 备份 →（用户同意后）push。
   verify 自动从 build_data*.py 解析源路径与合并规则；校验 ①(周期,站点)单元对账 ②维度守恒 ③行数+listing 回填覆盖率 ④周期元信息 ⑤站点集合 ⑥[2.5] 每个 BU 唯一归属。
@@ -15,6 +16,7 @@
   ⚠️ 切粒度必须重置 `pidx/site/drill/hide/hideAux/top`；保留 `colW`、`hideCols`。
 - **回归 `build/test_dashboard.js`**（Node 直跑 + 自建 DOM 桩，改模板必跑）。`D` 与 `DB.modes[0]` 同一对象，追加模拟周期后必须还原 `length`；模板串里的 `\n` 写 `\\n`；断言只能用字符串拼接。
   「标签重叠」用例 = 柱值标签守门：调 pure `trendSVG`，解析 `.bar-lbl` 的 x/y，判据 `|Δy|<12 且横向区间相交`（Arial 字宽×10.5px）；13 场景 × 周/月，须 0。
+  ⚠️ **避让顺序不能反**：必须「① 初值 → ② 两柱互查错开 14px → ③ 最后统一避让折线标签（上方优先，贴顶则翻到下方，`rl+16 / rl+30` 阶梯）」。若先避让折线再做两柱互查，互查会把刚躲开的柱值推回折线旁边（实测只差 2px 仍压字）。
 - **备份** `备份/YYYY-MM-DD_HHmm/` + 同名 zip（不覆盖历史）。内容 = 交付 HTML + `build/` + `.workbuddy/memory/*.md`。
   ⚠️ 无 `zip` 命令，用 Python `zipfile`，**arcname 相对快照目录**（zip 根即内容，不套时间戳层）+ 反斜杠换正斜杠，否则 verify 全「不一致」。
   校验 `build/verify_backup.py [时间戳]`：zip 完整性 + 解压↔快照 md5 + 清单↔工作区 + 双向全量扫描（`_composed_err.js` 忽略）。两向 OK 才过。
