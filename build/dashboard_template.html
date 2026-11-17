@@ -2468,6 +2468,17 @@ function applyQ4View(){
   if(_booted && now!==on){
     if(typeof closeTrendPop==='function') closeTrendPop();   // 切视图时别把弹窗留在另一个页面
     renderNav();                                            // 目录随视图切换（主目录 ⇄ Q4 四张清单）
+    /* ⚠️ 两个视图是靠大段 display:none 互斥的。部分浏览器（尤其内嵌 webview / Electron）
+       切回来时会残留上一页的合成层，出现「Q4 卡片和主看板叠在一起、趋势图被顶上去」的鬼影。
+       这里在切页后整块重渲染 + 回顶，强制重排重绘，顺手把滚动位置带回页首。 */
+    if(!on){
+      renderAll();                                          // 回主看板：重建全部板块
+      window.scrollTo(0, 0);
+    }else if(typeof renderQ4==='function'){
+      renderQ4();
+      window.scrollTo(0, 0);
+    }
+    void document.body.offsetHeight;                        // 触发一次同步 reflow，落定新布局
   }
 }
 const q4BackEl = document.getElementById('q4Back');
