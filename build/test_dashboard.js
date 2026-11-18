@@ -768,10 +768,12 @@ out.Q4冲销异常 = (()=>{
       const ownN = (cs[i].match(/class="q4own"/g)||[]).length;
       const ownEmpty = (cs[i].match(/class="q4own"[^>]*>—</g)||[]).length;
       const ownOk = ownN === got.length && ownEmpty === 0;
-      /* 库存三列：每行 3 格；全部站点下取 MX 口径，不能全空 */
+      /* 库存三列：每行 3 格。全部站点无单一库存口径（全「—」）；
+         选中站点时按该站点国家取数，不能整列都空（用户 11-18 要求巴西也更新） */
       const ivN = (cs[i].match(/class="q4iv"/g)||[]).length;
       const ivEmpty = (cs[i].match(/class="q4iv">—</g)||[]).length;
-      const ivOk = ivN === got.length*3 && ivEmpty*2 < ivN;      /* 「首尾下降但中途回升」的项不能被判成 ①（持续下降） */
+      const ivOk = ivN === got.length*3
+        && (state.site==='ALL' ? ivEmpty===ivN : ivEmpty*2 < ivN);      /* 「首尾下降但中途回升」的项不能被判成 ①（持续下降） */
       const midRiseN = exp.filter(e=> e.midRise).length;
       const noFalseOne = got.every(r=>{
         const e=expTop.find(x=> x.name===r.name && (!x.bu || x.bu===r.aux));
@@ -783,13 +785,22 @@ out.Q4冲销异常 = (()=>{
         +(ivOk?'':' ✕库存三列('+ivN+'/'+(got.length*3)+',空'+ivEmpty+')')
         +(midRiseN?('(中途回升'+midRiseN+'项)'):''));
     });
-    /* 库存数值必须与源表逐格对上：取第一张卡首行的三格，与 INV 里「该分类 + 该 BU」的值比 */
-    const fName=(cs[0].match(/data-q4name="([^"]+)"/)||[])[1];
-    const fBu=(cs[0].match(/data-q4bu="([^"]*)"/)||[])[1]||'';
-    const ivRef=fName ? (((INV.catBu||{})[fName+'\u0001'+fBu]) || INV.cat[fName]) : null;
-    const ivC=[...cs[0].matchAll(/<td class="q4iv">([^<]*)<\\/td>/g)].map(m=>m[1]).slice(0,3);
-    const ivValOk = !ivRef ? true
-      : (ivC[0]===fmtN(ivRef[0],0) && ivC[1]===invNum(ivRef[1],2) && ivC[2]===invNum(ivRef[2],1));
+    /* 库存数值必须与源表逐格对上：切到墨西哥站（有 MX 库存口径）后取第一张卡首行的三格 */
+    const mxIdx = D.sites.findIndex(s=>/MX|墨西哥/i.test(String(s.name||'')+' '+String(s.code||'')));
+    const siteBack2 = state.site; state.site = (mxIdx>=0? mxIdx : 0); renderAll();
+    /* 取第一张卡里「第一个带库存值的行」做对照（首行可能本身就没库存） */
+    const mxGrid = store['id:q4Grid']||'';
+    const mxCard0 = mxGrid.split('<div class="q4card"')[1] || '';
+    const fName = (mxCard0.match(/data-q4name="([^"]+)"/)||[])[1];
+    const fBu   = (mxCard0.match(/data-q4bu="([^"]*)"/)||[])[1] || '';
+    const mxBucket0 = k => (INV[k] && (INV[k].MX || INV[k].BR)) ? (INV[k].MX||{}) : (INV[k]||{});
+    const ivRef0 = fName ? ((mxBucket0('catBu')[fName+'\u0001'+fBu]) || mxBucket0('cat')[fName]) : null;
+    /* 页面上「该名称 + 该 BU」那一行的三格（不取首行，避免排序/筛选错位） */
+    const trMx = [...mxCard0.matchAll(new RegExp('<tr>[^]*?<\\/tr>','g'))].map(m=>m[0])
+      .find(t => fName && t.indexOf('data-q4name="'+fName+'"')>=0 && t.indexOf('data-q4bu="'+fBu+'"')>=0) || '';
+    const ivC = [...trMx.matchAll(/<td class="q4iv">([^<]*)<\\/td>/g)].map(m=>m[1]).slice(0,3);
+    const ivValOk = !ivRef0 ? true
+      : (ivC[0]===fmtN(ivRef0[0],0) && ivC[1]===invNum(ivRef0[1],2) && ivC[2]===invNum(ivRef0[2],1));
     /* 跨 BU 拆行：同名的三级分类必须拆成两行（BU 不同），且 (名称,BU) 不重复、每行都带 BU */
     const rrows = q4Rows('share','三级分类');
     const buByName = {};
@@ -814,12 +825,16 @@ out.Q4冲销异常 = (()=>{
     const siteBak=state.site; state.site=0; renderAll();
     const ref2=ref('rate','国家Listing');
     const follow=parse(cards()[3]).length===Math.min(ref2.length,q4TopN('国家Listing'));
-    /* 库存三列只有 MX 口径：选巴西站（sites[1]）时三列必须全部显示「—」 */
-    state.site=1; renderAll();
+    /* 巴西站也有库存口径（用户 11-18）：必须显示 BR 的数值，不能整列「—」 */
+    const brIdx = D.sites.findIndex(s=>/BR|巴西/i.test(String(s.name||'')+' '+String(s.code||'')));
+    state.site=(brIdx>=0? brIdx : 1); renderAll();
     const brCard=cards()[0]||'';
     const brIv=(brCard.match(/class="q4iv"/g)||[]).length;
     const brEmpty=(brCard.match(/class="q4iv">—</g)||[]).length;
-    const brOk = brIv===0 || brIv===brEmpty;
+    const brOk = brIv>0 && brEmpty*2 < brIv;                       // 至少一半以上格子有值
+    /* 再核 BR 桶里确实有数据（不是空表碰巧） */
+    const brBucket = k => (INV[k] && INV[k].BR) ? INV[k].BR : {};
+    const brHasData = Object.keys(brBucket('cat')).length>0 && Object.keys(brBucket('listing')).length>0;
     state.site=siteBak; renderAll();
     /* 三档判定文案：① 连续N周不达且无改善 ② 连续N周不达 ③ 一半及以上不达 */
     const w4=[0,1,2,3];
@@ -924,8 +939,8 @@ out.Q4冲销异常 = (()=>{
       + ' | 集中度一句话=' + (sumOk? ('ok 整体缺口'+fmtN(scopeG,1)+' 三级分类TOP10='+p10Txt+' ListingTOP15='+p15Txt+' TOP'+k40+'达40% 卡片'+sumN+' 导出'+expN)
                                 : ('✕ 卡片'+sumN+'/4 导出'+expN+' 整体'+fmtN(scopeG,1)+' 期望'+p10Txt+'/TOP'+k40+' 同数'+sameTotal))
       + ' | 导出CSV=' + (csvOk? ('ok 列'+ch+' 行'+(cl.length-1)) : ('✕ 列'+ch+'/期望'+(9+q4Window().length+1)+' 行'+(cl.length-1)+'/'+rr.length))
-      + ' | 库存三列=' + (brOk? ('ok 巴西全空'+brEmpty+'/'+brIv) : ('✕ 巴西仍有值 '+(brIv-brEmpty)+'/'+brIv))
-      + ' | 库存取值=' + (ivValOk? ('ok '+fName+' '+ivC.join('/')) : ('✕ '+fName+' 页面'+ivC.join('/')+' 源表'+(ivRef?[fmtN(ivRef[0],0),invNum(ivRef[1],2),invNum(ivRef[2],1)].join('/'):'—')))
+      + ' | 库存三列=' + (brOk&&brHasData? ('ok 巴西取值'+(brIv-brEmpty)+'/'+brIv) : ('✕ 巴西 '+(brIv-brEmpty)+'/'+brIv+' 桶数据'+brHasData))
+      + ' | 库存取值=' + (ivValOk? ('ok '+fName+' '+ivC.join('/')) : ('✕ '+fName+' 页面'+ivC.join('/')+' 源表'+(ivRef0?[fmtN(ivRef0[0],0),invNum(ivRef0[1],2),invNum(ivRef0[2],1)].join('/'):'—')))
       + ' | 跨BU拆行=' + (splitOk? ('ok 同名'+dupNames.length+'组 总行'+rrows.length) : ('✕ 同名组'+dupNames.length+' 行'+rrows.length))
       + ' | 拆行弹窗=' + (buPopOk? 'ok 带BU' : '✕ 无BU')
       + ' | 判定文案 ' + (txtOk? (t1+' / '+t2+' / '+t3) : ('✕ '+t1+' | '+t2+' | '+t3))

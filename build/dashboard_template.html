@@ -2233,24 +2233,46 @@ function q4Window(){
 }
 /* 按维度项汇总窗口内每期的 (加权预测, 70%-130%预测量, 订单销量)，再按上面三档规则筛出异常项 */
 /* ---------- Q4 库存三列（FBA总可销售展示库存 / 7DMS / 可售天数） ----------
-   数据来自「MX&BR冲坑周跟进」表，只有墨西哥站（MX）口径：
-   全部站点 / 墨西哥站显示数值，选巴西站时三列统一显示「—」。
-   三级分类取「5.三级分类」的 E 列（国家=MX），国家Listing 取「6.Listing」的 G 列（国家=MX）。 */
-const INV = (DB && DB.inv) || {cat:{}, listing:{}};
-function invScopeMx(){
-  if(state.site==='ALL') return true;
+   数据来自「MX&BR冲坑周跟进」表，按站点取对应国家的口径：
+   墨西哥站 → MX 行，巴西站 → BR 行（用户 2026-11-18 要求巴西也更新）；
+   「全部站点」是两国并排看的视图，没有单一库存口径，三列显示「—」。
+   三级分类取「5.三级分类」的 E 列，国家Listing 取「6.Listing」的 G 列。 */
+const INV = (DB && DB.inv) || {cat:{}, catBu:{}, listing:{}};
+/* 当前站点对应的库存国家：'MX' / 'BR' / null（全部站点 → 无单一口径） */
+function invCountry(){
+  if(state.site==='ALL') return null;
   const s = D.sites[state.site];
-  if(!s) return false;
-  return /MX/i.test(String(s.name||'') + ' ' + String(s.code||''));
+  if(!s) return null;
+  const t = String(s.name||'') + ' ' + String(s.code||'');
+  if(/BR|巴西/i.test(t)) return 'BR';
+  if(/MX|墨西哥/i.test(t)) return 'MX';
+  return null;
+}
+/* 兼容两种结构：新结构 {MX:{...},BR:{...}}，旧结构（只有 MX）直接是扁平表 */
+function invBucket(kind, ctry){
+  const b = INV[kind];
+  if(!b || !ctry) return null;
+  if(b.MX || b.BR) return b[ctry] || null;
+  return (ctry==='MX') ? b : null;
 }
 function invOf(dimKey, name, bu){
-  if(!invScopeMx()) return null;
-  if(dimKey==='国家Listing') return INV.listing[name] || null;
+  const ctry = invCountry();
+  if(!ctry) return null;
+  if(dimKey==='国家Listing'){ const t = invBucket('listing', ctry); return (t && t[name]) || null; }
   if(dimKey!=='三级分类') return null;
   /* 库存表里同名三级分类也是按 BU 拆行的，所以优先取「分类\u0001BU」的值；
      两行各自对应自己 BU 的库存，不会出现两行显示同一个合计、加总翻倍的问题。 */
-  if(INV.catBu) return INV.catBu[name + '\u0001' + (bu||'')] || null;
-  return INV.cat[name] || null;
+  const bt = invBucket('catBu', ctry);
+  if(bt && bt[name + '\u0001' + (bu||'')]) return bt[name + '\u0001' + (bu||'')];
+  const t = invBucket('cat', ctry);
+  return (t && t[name]) || null;
+}
+/* 当前站点的库存国家名（写进说明文案）：'墨西哥站（MX）' / '巴西站（BR）' / '所选站点' */
+function invScopeLabel(){
+  const c = invCountry();
+  if(c==='MX') return {txt:'墨西哥站（MX）', none:false};
+  if(c==='BR') return {txt:'巴西站（BR）', none:false};
+  return {txt:'所选站点（全部站点无单一库存口径）', none:true};
 }
 /* 可售天数源表里会直接给「∞」（7DMS=0 但仍有库存），原样显示 */
 function invNum(v, d){
@@ -2548,12 +2570,14 @@ function renderQ4(){
     /* 说明文案（用户 11-17 给定措辞，四句按「判定异常逻辑 / 异常打标 / 默认展示 / 库存三列」顺序） */
     const nCat = q4TopN('三级分类'), nLst = q4TopN('国家Listing');
     const invSrc = INV.src ? `「${esc(INV.src)}」` : '「MX&BR冲坑周跟进」';
+    /* 当前所选站点对应的库存口径（墨西哥站=MX / 巴西站=BR / 全部站点=无单一口径） */
+    const sc = invScopeLabel();
     note.innerHTML =
       `<b>判定异常逻辑</b>：加权版70%-130%占比 ＜ 35%；加权达成 ＜ 90%<br>`
     + `<b>异常打标</b>：① 连续${per.length}${U}不达且无改善 ｜ ② 连续${per.length}${U}不达 ｜ ③ 一半及以上不达（≥ ${Math.ceil(per.length/2)} ${U}）。<b>无改善</b> = 逐期持续下降<br>`
     + `<b>默认展示</b>：三级分类前 ${nCat} 项、国家Listing 前 ${nLst} 项，同一项命中多档取序号靠前一档。按本期<b>加权预测缺口</b> = 销售预测(加权) − 订单销量，从大到小排列<br>`
-    + `<b>库存三列</b>（FBA总可销售展示库存 / 7DMS / 可售天数）为<b>墨西哥站（MX）</b>口径，数据源${invSrc}`
-    + `${INV.tag?`（维度更新 ${esc(INV.tag)}${INV.asOf?`，数据日期 ${esc(INV.asOf)}`:''}）`:''}；<b>选巴西站时三列显示「—」</b>，可售天数 = 总可销售展示库存 ÷ 7DMS（∞ 表示 7DMS 为 0 但仍有库存）`;
+    + `<b>库存三列</b>（FBA总可销售展示库存 / 7DMS / 可售天数）<b>按站点取对应国家口径</b>（墨西哥站=MX、巴西站=BR），数据源${invSrc}`
+    + `${INV.tag?`（维度更新 ${esc(INV.tag)}${INV.asOf?`，数据日期 ${esc(INV.asOf)}`:''}）`:''}；当前口径：<b>${esc(sc.txt)}</b>，可售天数 = 总可销售展示库存 ÷ 7DMS（∞ 表示 7DMS 为 0 但仍有库存）`;
   }
   const blocks=[['share','三级分类'],['share','国家Listing'],['rate','三级分类'],['rate','国家Listing']];
   /* 同一个维度项在「占比异常」和「达成异常」两张清单里可能都命中，入口数字按维度项去重 */
