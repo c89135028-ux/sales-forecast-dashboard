@@ -949,6 +949,23 @@ out.Q4冲销异常 = (()=>{
   }catch(e){ return 'ERR:'+e.message; }
 })();
 
+out.负责人唯一 = (()=>{
+  /* 用户 11-18：负责人一律以最新一期为准，历史期旧负责人不再计入 → Q4 负责人列不再出现「+N」。
+     ⚠️ 曾经的 bug：全窗口各期 Σf1 累加，历史旧负责人把票投回来，墨西哥狗窝显示「赵敏 +1」。 */
+  try{
+    const h = store['id:q4Grid'] || '';
+    // 负责人单元格：<td class="q4own" ...>文字</td>
+    const ownCells = [...h.matchAll(/class="q4own"[^>]*>([^<]*)</g)].map(m=>m[1]);
+    const badCells = ownCells.filter(t=> t.indexOf('+') >= 0);
+    // 负责人格内嵌的 +N 标记（<i class="q4auxn">）
+    const ownPlus = (h.split('class="q4own"').length - 1);
+    const plusTag = (h.split('q4auxn').length - 1);
+    return '负责人格=' + ownCells.length + ' 带+文字=' + badCells.length + ' +N标记=' + plusTag
+      + ' | 全部单负责人=' + (badCells.length===0 && plusTag===0 ? 'true' : 'false')
+      + (badCells.length===0 && plusTag===0 ? ' OK' : ' ✕ '+badCells.slice(0,3).join(','));
+  }catch(e){ return 'ERR:'+e.message; }
+})();
+
 out.Q4筛选 = (()=>{
   // Q4 4 张卡片表头也补了同一套「点开→表头下面一行条件→再点收起」
   const key = 'share:三级分类';

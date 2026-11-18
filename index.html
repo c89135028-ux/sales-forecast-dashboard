@@ -2307,10 +2307,13 @@ function q4Rows(kind, dimKey){
       if(!m.aux) m.aux=new Map();
       m.aux.set(r[auxField], (m.aux.get(r[auxField])||0) + r.f1);
     }
-    /* 业务负责人：同一个三级分类 / Listing 可能跨多个负责人，按加权预测取最大者，其余标 +N。
-       拆 BU 之后每组只剩一个负责人，这里的 +N 自然归零。 */
-    if(!m.own) m.own=new Map();
-    m.own.set(r.o, (m.own.get(r.o)||0) + r.f1);
+    /* 业务负责人：一律以**最新一期**为准（用户 11-18：「负责人都以我发给你的最新表为准，
+       若有变化历史的负责人也变，保持统一」）。
+       即取该组「最近有记录的一期」里 Σf1 最大的那位，整组只显示这一个负责人，不再标 +N。
+       ⚠️ 不能用「全窗口各期 Σf1 累加最大」——历史期的旧负责人会把票投回来，出现「A +1」。 */
+    if(!m.ownByP) m.ownByP=new Map();          // 周期下标 → Map(负责人下标 → Σf1)
+    let op=m.ownByP.get(r.w); if(!op){ op=new Map(); m.ownByP.set(r.w, op); }
+    op.set(r.o, (op.get(r.o)||0) + r.f1);
   }
   const out=[];
   agg.forEach((m)=>{
@@ -2331,18 +2334,22 @@ function q4Rows(kind, dimKey){
       auxName = D.dims[AUX][arr[0][0]];
       auxMore = m.aux.size - 1;
     }
-    let ownName='', ownMore=0;
-    if(m.own && m.own.size){
-      const oarr=[...m.own.entries()].sort((x,y)=> y[1]-x[1]);
-      ownName = D.dims['业务负责人'][oarr[0][0]];
-      ownMore = m.own.size - 1;
+    /* 负责人：从「最近有记录的一期」里取 Σf1 最大的那位（整组唯一，不再 +N）。 */
+    let ownName='';
+    if(m.ownByP && m.ownByP.size){
+      const wks=[...m.ownByP.keys()].sort((a,b)=> b-a);     // 周期下标从大到小
+      const latestW = wks.find(w=> m.ownByP.get(w).size);   // 最近一期确实有负责人的
+      if(latestW!=null){
+        const oarr=[...m.ownByP.get(latestW).entries()].sort((x,y)=> y[1]-x[1]);
+        ownName = D.dims['业务负责人'][oarr[0][0]];
+      }
     }
     const name = D.dims[dimKey][m.nameIdx];
     const bu = SPLIT_BU ? D.dims['BU'][m.buIdx] : null;
     out.push({idx:m.nameIdx, key:(m.nameIdx+'\u0001'+(m.buIdx==null?'':m.buIdx)), name:name, bu:bu,
               series, tier, curF1, curA,
               curGap: curF1 - curA,          // 加权预测缺口 = 销售预测(加权) − 订单销量（本期）
-              auxName, auxMore, ownName, ownMore, winF1:m.f1,
+              auxName, auxMore, ownName, winF1:m.f1,
               inv: invOf(dimKey, name, bu)});   // [库存, 7DMS, 可售天数] 或 null
   });
   /* 异常里优先展示缺口大的：本期加权预测缺口 desc → 本期加权预测 desc → 名称 → BU */
@@ -2441,9 +2448,8 @@ function q4CardHTML(kind, dimKey, rows, per, idx, scopeGap, totalN){
     const aux = r.auxName
       ? `${esc(r.auxName)}${r.auxMore ? `<i class="q4auxn" title="该项跨 ${r.auxMore+1} 个${auxLabel}，此处按加权预测取最大者">+${r.auxMore}</i>` : ''}`
       : '—';
-    const own = r.ownName
-      ? `${esc(r.ownName)}${r.ownMore ? `<i class="q4auxn" title="该项跨 ${r.ownMore+1} 个业务负责人，此处按加权预测取最大者">+${r.ownMore}</i>` : ''}`
-      : '—';
+    /* 负责人一律取「最新一期」唯一的负责人，跟随源表（用户 11-18） */
+    const own = r.ownName ? esc(r.ownName) : '—';
     return `<tr>
       <td class="q4aux" title="${esc(r.auxName||'')}">${aux}</td>
       <td class="q4nm q4clk" data-q4dim="${dimKey}" data-q4name="${esc(r.name)}" data-q4bu="${esc(r.bu||'')}" title="点击查看「${esc(r.name)}${r.bu?` · ${esc(r.bu)}`:''}」的预测达成">${esc(r.name)}</td>
@@ -2511,7 +2517,7 @@ function q4CSV(key){
   rows.forEach(r=>{
     const aux = r.auxName ? (r.auxName + (r.auxMore? ' +'+r.auxMore : '')) : '';
     /* 数值一律用屏幕上看到的那套格式（千分位 + 缺口的正负号），保证导出与画面逐格对得上 */
-    const own = r.ownName ? (r.ownName + (r.ownMore? ' +'+r.ownMore : '')) : '';
+    const own = r.ownName ? r.ownName : '';
     const iv = r.inv;   // 库存三列：与画面同格式（库存整数、7DMS 两位、天数一位/∞）
     const cells = [aux, r.name, own, fmtN(r.curF1,1), fmtN(r.curA,1), fmtGap(r.curGap),
                    iv? fmtN(iv[0],0) : '', iv? invNum(iv[1],2) : '', iv? invNum(iv[2],1) : '']
