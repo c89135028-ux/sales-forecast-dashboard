@@ -309,9 +309,40 @@ table.wide thead tr.cfr th.cfcell,table.q4t thead tr.cfr th.cfcell{position:rela
 .cfr .cfv::-webkit-outer-spin-button,.cfr .cfv::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
 .cfr .cfo:focus,.cfr .cfv:focus{border-color:#9db4e0;box-shadow:0 0 0 2px rgba(47,91,215,.12)}
 .cfr .cfv::placeholder{color:#b9c4d8}
+/* 文字列（三级分类 / 国家Listing / 负责人）：一个关键字输入框 + 一个「清单」下拉按钮 */
+.cfr .cft{flex:1 1 auto;min-width:0;width:100%;box-sizing:border-box;font-family:inherit;font-size:10.5px;
+  color:#2b3a55;background:#fff;border:1px solid #d7e0ef;border-radius:4px;padding:1px 3px;outline:none}
+.cfr .cft::placeholder{color:#b9c4d8}
+.cfr .cft:focus{border-color:#9db4e0;box-shadow:0 0 0 2px rgba(47,91,215,.12)}
+.cfr .cfpick{flex:0 0 auto;font-family:inherit;font-size:9.5px;line-height:1.5;color:#5b6b8a;background:#fff;
+  border:1px solid #d7e0ef;border-radius:4px;padding:0 4px;cursor:pointer;white-space:nowrap}
+.cfr .cfpick:hover{border-color:#9db4e0;color:var(--accent)}
+.cfr .cfpick.on{border-color:#9db4e0;background:var(--accent-soft);color:var(--accent);font-weight:600}
 .cfr .cfclr{font-family:inherit;font-size:10.5px;color:var(--ink2);background:#fff;border:1px solid #d7e0ef;
   border-radius:5px;padding:1px 7px;cursor:pointer;line-height:1.6}
 .cfr .cfclr:hover{color:#c0392b;border-color:#e6bdb7}
+/* 文字列的「勾选清单」弹层（Q4 卡片用；复用 fpop 观感） */
+.qpick{position:absolute;z-index:90;width:210px;background:#fff;border:1px solid var(--line);
+  border-radius:10px;box-shadow:0 10px 26px rgba(30,50,90,.16);padding:9px}
+.qpick[hidden]{display:none}
+.qpick .qph{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px}
+.qpick .qph b{font-size:12px;color:var(--ink)}
+.qpick .qph em{font-style:normal;font-size:11px;color:var(--muted);font-weight:600}
+.qpick .qsearch{width:100%;box-sizing:border-box;font-family:inherit;font-size:12px;color:var(--ink2);
+  border:1px solid var(--line2);border-radius:7px;padding:4px 7px;outline:none;margin-bottom:6px}
+.qpick .qsearch:focus{border-color:#9db4e0;box-shadow:0 0 0 2px var(--accent-soft)}
+.qpick .qlist{max-height:200px;overflow:auto;border:1px solid var(--line2);border-radius:8px;padding:3px}
+.qpick .qitem{display:flex;align-items:center;gap:6px;padding:3px 6px;border-radius:6px;cursor:pointer;
+  font-size:12px;color:var(--ink2)}
+.qpick .qitem:hover{background:#f5f8ff}
+.qpick .qitem input{accent-color:var(--accent);margin:0;cursor:pointer;flex:none}
+.qpick .qitem .qn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.qpick .qpf{display:flex;align-items:center;gap:6px;margin-top:8px}
+.qpick .qpf button{font-family:inherit;font-size:11.5px;color:var(--ink2);background:#fff;
+  border:1px solid var(--line2);border-radius:6px;padding:2px 8px;cursor:pointer}
+.qpick .qpf button:hover{border-color:#9db4e0;color:var(--accent);background:var(--accent-soft)}
+.qpick .qpf button.pri{margin-left:auto;background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.qpick .qpf button.pri:hover{background:#2549b8;color:#fff}
 /* ---------- KPI ---------- */
 /* 7 个 KPI 恒定排成一行（用户要求）；窗口太窄时才退回自适应换行，避免卡片被压得没法读 */
 .kpis{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:12px;padding:14px 16px 4px}
@@ -632,6 +663,7 @@ table.q4t td.q4iv{color:#5b6a86;font-size:12px;white-space:nowrap}
 </div>
 
 <div id="fpop" class="fpop" hidden></div>
+<div id="qpick" class="qpick" hidden></div>
 <div id="colpop" class="colpop" hidden></div>
 <div id="tpop" class="tpop" hidden></div>
 
@@ -657,8 +689,9 @@ let TWIN = 4;          // 趋势图默认展示最近几个周期
 const state = { mode:null,            // 当前粒度 key
                 pidx: 0, site:'ALL', bizGroup:'ALL', elim:'ALL', drill:{}, sort:{}, top:{}, hide:{}, hideCols:{}, trendIdx:'mRate',
                 hideAux:{},   // 附属列（国家Listing 表的三级分类）局部筛选：dimKey → 排除集合
-                cf:{},        // 表头条件筛选：tableKey → {列key: {op:'>'|'≥'|'<'|'≤'|'=', v:数值}}
+                cf:{},        // 表头条件筛选：tableKey → {列key: {op:'>'|'≥'|'<'|'≤'|'=', v:数值}} 或 {列key:{txt:'关键词'}}
                 cfOpen:{},    // 哪些表的「筛选条件行」是展开的：tableKey → true
+                qpick:{},     // 文字列「勾选清单」筛选：tableKey → {列key: Set(勾选的名称)}（空 Set = 全选/不生效）
                 colW:{} };    // 自定义列宽：tableKey -> 宽度数组（拖动表头边界调整）
 let ELIM_SET = new Set(); // 命中巴西淘汰清单的 SKU 维度下标（loadMode 时计算）
 let CROSS_CATS = new Set(); // 同名跨 BU 的三级分类下标（只有这些行按 BU 拆行 + 标注 BU）
@@ -725,7 +758,7 @@ function loadMode(key){
     for(const [c, s] of seen){ if(s.size>1) CROSS_CATS.add(c); }
   }
   state.pidx = D.periods.length-1;
-  state.site = 'ALL'; state.bizGroup = 'ALL'; state.elim = 'ALL'; state.drill = {}; state.drillBu = {}; state.hide = {}; state.cf = {}; state.cfOpen = {}; state.hideAux = {}; state.top = {}; state.q4more = {}; state.trendIdx = state.trendIdx || 'mRate';
+  state.site = 'ALL'; state.bizGroup = 'ALL'; state.elim = 'ALL'; state.drill = {}; state.drillBu = {}; state.hide = {}; state.cf = {}; state.cfOpen = {}; state.qpick = {}; state.hideAux = {}; state.top = {}; state.q4more = {}; state.trendIdx = state.trendIdx || 'mRate';
   state.sort = {}; DIM_KEYS.forEach(k=>{ state.sort[k] = {k:'a', dir:-1}; });   // 默认各表都按订单销量从高到低
   state.sort['_site'] = {k:'a', dir:-1};
   document.title = `拉美销售预测达成看板`;
@@ -1550,10 +1583,14 @@ const CF_OPS = ['>','≥','<','≤','='];
 /* 比率列：输入按百分数理解（输 80 = 80%），与画面上显示的数字一致 */
 const CF_PCT = new Set(['mRate','m1Rate','wRate','mOosRate','wOosRate','bandShare','bandShare4']);
 let cfTimer = null;
-/* 只统计「已经填了数值」的条件：只选了运算符还没填数，不算生效 */
+/* 只统计「已经填了数值/文字」的条件：只选了运算符还没填数，不算生效 */
 const cfLive = (key)=>{
   const bag = state.cf[key]||{};
-  return Object.keys(bag).filter(k=>bag[k] && bag[k].v!=null && isFinite(bag[k].v));
+  return Object.keys(bag).filter(k=>{
+    const c = bag[k]; if(!c) return false;
+    if(c.txt!=null) return String(c.txt).trim()!=='';       // 文字条件：非空才算
+    return c.v!=null && isFinite(c.v);
+  });
 };
 const cfCount = (tblKey)=> cfLive(tblKey).length;
 const cfBtnHTML = (tblKey)=>{
@@ -1572,6 +1609,19 @@ function cfCellHTML(tblKey, c){
     + `<input class="cfv" type="number" step="any" inputmode="decimal" data-cfv="${c.k}"`
     + ` value="${cur.v==null||cur.v===''?'':cur.v}" placeholder="${pct?'%':'—'}"`
     + ` title="${esc(c.t)}：${pct?'按百分数填，如 80':'按数值填'}">`
+    + `</span></th>`;
+}
+/* 文字列条件格：关键字输入框 + 「清单」下拉按钮（点开勾选要显示的名称） */
+function cfTextHTML(tblKey, colKey, label){
+  const cur = (state.cf[tblKey]||{})[colKey] || {};
+  const pick = (state.qpick[tblKey]||{})[colKey];
+  const nPick = pick && pick.size ? ` ${pick.size}` : '';
+  return `<th class="cfcell" data-c="${colKey}"><span class="cfin">`
+    + `<input class="cft" type="search" data-cft="${esc(colKey)}"`
+    + ` value="${cur.txt==null?'':esc(cur.txt)}" placeholder="关键字"`
+    + ` title="${esc(label)}：输入关键字做包含匹配">`
+    + `<button class="cfpick${pick&&pick.size?' on':''}" type="button" data-cfpick="${esc(colKey)}"`
+    + ` title="${esc(label)}：展开清单勾选要显示的项">清单${nPick}</button>`
     + `</span></th>`;
 }
 /* 单个比较：运算符 + 阈值。主看板与 Q4 卡片共用 */
@@ -1625,18 +1675,119 @@ function cfToggle(key){
   if(state.cfOpen[key]){
     delete state.cfOpen[key];
     delete state.cf[key];
+    delete state.qpick[key];
+    closeQPick();
   }else{
     state.cfOpen[key] = true;
   }
   cfRenderTable(key);
 }
+/* 文字条件：关键字包含匹配（边打边生效，防抖）；重画后补回焦点与光标 */
+function cfApplyText(k, v, key, refocus){
+  const bag = state.cf[key] || (state.cf[key]={});
+  bag[k] = {txt: v};
+  cfRenderTable(key);
+  if(refocus){
+    const el = document.querySelector(`table[data-tkey="${key}"] [data-cft="${k}"]`);
+    if(el){ el.focus(); const n = String(el.value).length;
+      try{ el.setSelectionRange(n, n); }catch(err){} }
+  }
+}
+/* ---------- 文字列的「勾选清单」弹层 ---------- */
+const qpick = { key:null, col:null, label:'', all:[], sel:new Set(), q:'', anchor:null };
+const QPICK_DIM = {'aux':'上级维度', 'name':'', 'own':'负责人'};   // name 的标题用维度名
+function qpickValues(key, col, rows){
+  const def = Q4_CF_TXT[col]; if(!def) return [];
+  /* 值清单来自「当前条件行下（不含清单本身）的全部行」，保证不会越筛越少 */
+  const bag = state.cf[key]||{}, pick = state.qpick[key]||{};
+  const base = rows.filter(r=>{
+    for(const k in bag){
+      const c=bag[k];
+      if(!c) continue;
+      if(Q4_CF_TXT[k]){ if(c.txt!=null && String(c.txt).trim()!=='' && String(Q4_CF_TXT[k].v(r)).indexOf(String(c.txt).trim())<0) return false; continue; }
+      const d=Q4_CF[k]; if(!d) continue;
+      if(c.v==null || !isFinite(c.v)) continue;
+      const v=d.v(r); if(v==null||Number.isNaN(v)) return false;
+      if(!cfHit(v,c.op,c.v)) return false;
+    }
+    for(const k in pick){ if(k===col) continue; const s=pick[k]; if(!s||!s.size) continue;
+      const dd=Q4_CF_TXT[k]; if(dd && !s.has(String(dd.v(r)))) return false; }
+    return true;
+  });
+  return [...new Set(base.map(r=>String(def.v(r))))].sort((a,b)=>a.localeCompare(b,'zh'));
+}
+function openQPick(key, col, anchor, rows){
+  qpick.key=key; qpick.col=col; qpick.anchor=anchor; qpick.q='';
+  qpick.all = qpickValues(key, col, rows);
+  const cur = (state.qpick[key]||{})[col];
+  qpick.sel = new Set(cur && cur.size ? [...cur].filter(x=>qpick.all.includes(x)) : qpick.all);
+  qpick.label = col==='name' ? (key.split(':')[1]||'名称') : QPICK_DIM[col];
+  renderQPick();
+  const el=document.getElementById('qpick');
+  el.hidden=false;
+  placePop(el, anchor, false);
+}
+function closeQPick(){ const el=document.getElementById('qpick'); if(el) el.hidden=true; qpick.key=null; }
+function renderQPick(){
+  const el=document.getElementById('qpick');
+  el.innerHTML=`
+    <div class="qph"><b>筛选 ${esc(qpick.label)}</b><em>已选 ${qpick.sel.size} / ${qpick.all.length}</em></div>
+    <input class="qsearch" type="search" placeholder="搜索…" value="${esc(qpick.q)}">
+    <div class="qlist">${qpick.all.length? qpick.all.map(n=>{
+      return `<label class="qitem" data-v="${esc(n)}" title="${esc(n)}"><input type="checkbox" data-qv="${esc(n)}"${qpick.sel.has(n)?' checked':''}><span class="qn">${esc(n||'（空）')}</span></label>`;
+    }).join('') : '<div class="qempty" style="padding:10px;text-align:center;color:var(--muted);font-size:12px">暂无可筛选项</div>'}</div>
+    <div class="qpf">
+      <button data-qall>全选</button><button data-qnone>清空</button><button data-qreset>重置</button>
+      <button class="pri" data-qapply>应用</button>
+    </div>`;
+}
+function qpickSyncCount(){
+  const em=document.querySelector('#qpick .qph em'); if(em) em.textContent=`已选 ${qpick.sel.size} / ${qpick.all.length}`;
+}
+function qpickCommit(keepOpen){
+  const key=qpick.key, col=qpick.col;
+  const allSet=new Set(qpick.all), sel=new Set([...qpick.sel]);
+  const empty = sel.size===0 || (sel.size===allSet.size);
+  const bag=state.qpick[key] || (state.qpick[key]={});
+  if(empty) delete bag[col]; else bag[col]=sel;
+  cfRenderTable(key);
+  if(!keepOpen){ closeQPick(); return; }
+  renderQPick();
+}
 document.addEventListener('click', ev=>{
   const t = ev.target.closest('[data-cfopen]');
-  if(t){ ev.stopPropagation(); cfToggle(t.dataset.cfopen); return; }
+  if(t){ ev.stopPropagation(); closeQPick(); cfToggle(t.dataset.cfopen); return; }
+  const pk = ev.target.closest('[data-cfpick]');
+  if(pk){
+    ev.stopPropagation();
+    const tbl = pk.closest('table'), key = tbl && tbl.dataset.tkey;
+    if(key){
+      const col = pk.dataset.cfpick;
+      /* 行数据直接从当前 Q4 全量取（q4Rows 的原表），保证清单完整 */
+      const rows = cfQ4Rows(key);
+      openQPick(key, col, pk, rows);
+    }
+    return;
+  }
   const c = ev.target.closest('[data-cfclr]');
-  if(c){ ev.stopPropagation(); delete state.cf[c.dataset.cfclr]; cfRenderTable(c.dataset.cfclr); }
+  if(c){ ev.stopPropagation(); closeQPick(); delete state.cf[c.dataset.cfclr]; delete state.qpick[c.dataset.cfclr]; cfRenderTable(c.dataset.cfclr); return; }
+  /* 点空白处关闭清单弹层 */
+  if(!ev.target.closest || !ev.target.closest('#qpick')) closeQPick();
+});
+/* 清单弹层内部交互 */
+document.addEventListener('click', ev=>{
+  if(!ev.target.closest || !ev.target.closest('#qpick')) return;
+  const el=document.getElementById('qpick');
+  if(ev.target.closest('[data-qall]')){ qpick.sel=new Set(qpick.all); el.querySelectorAll('input[data-qv]').forEach(cb=>cb.checked=true); qpickSyncCount(); return; }
+  if(ev.target.closest('[data-qnone]')){ qpick.sel=new Set(); el.querySelectorAll('input[data-qv]').forEach(cb=>cb.checked=false); qpickSyncCount(); return; }
+  if(ev.target.closest('[data-qreset]')){ qpick.sel=new Set(qpick.all); el.querySelectorAll('input[data-qv]').forEach(cb=>cb.checked=true); qpickSyncCount(); return; }
+  if(ev.target.closest('[data-qapply]')){ qpickCommit(false); return; }
+  const it=ev.target.closest('.qitem');
+  if(it && ev.target.tagName!=='INPUT'){ const cb=it.querySelector('input[data-qv]'); if(cb) cb.checked=!cb.checked; }
 });
 document.addEventListener('change', ev=>{
+  const cb = ev.target.closest && ev.target.closest('#qpick input[data-qv]');
+  if(cb){ if(cb.checked) qpick.sel.add(cb.dataset.qv); else qpick.sel.delete(cb.dataset.qv); qpickSyncCount(); return; }
   const s = ev.target.closest('select[data-cfo]'); if(!s) return;
   const tbl = s.closest('table'); const key = tbl && tbl.dataset.tkey; if(!key) return;
   const inp = s.parentNode.querySelector('input[data-cfv]');
@@ -1644,6 +1795,23 @@ document.addEventListener('change', ev=>{
   cfApply(s.dataset.cfo, s.value, inp? inp.value : '', key, true);
 });
 document.addEventListener('input', ev=>{
+  const q = ev.target.closest && ev.target.closest('#qpick .qsearch');
+  if(q){
+    qpick.q = q.value; const kw=q.value.trim();
+    const list=document.querySelector('#qpick .qlist');
+    if(list){
+      [...list.querySelectorAll('.qitem')].forEach(it=>{
+        it.style.display = (!kw || it.dataset.v.indexOf(kw)>=0) ? '' : 'none';
+      });
+    }
+    return;
+  }
+  const tx = ev.target.closest && ev.target.closest('input[data-cft]'); if(tx){
+    const tbl = tx.closest('table'); const key = tbl && tbl.dataset.tkey; if(!key) return;
+    clearTimeout(cfTimer);
+    cfTimer = setTimeout(()=>cfApplyText(tx.dataset.cft, tx.value, key, true), 320);
+    return;
+  }
   const i = ev.target.closest('input[data-cfv]'); if(!i) return;
   const tbl = i.closest('table'); const key = tbl && tbl.dataset.tkey; if(!key) return;
   const sel = i.parentNode.querySelector('select[data-cfo]');
@@ -1652,6 +1820,14 @@ document.addEventListener('input', ev=>{
 });
 /* 回车收起软键盘 / 直接生效 */
 document.addEventListener('keydown', ev=>{
+  if(ev.key==='Enter'){
+    const tx = ev.target.closest && ev.target.closest('input[data-cft]');
+    if(tx){
+      ev.preventDefault(); clearTimeout(cfTimer);
+      const tbl = tx.closest('table'); const key = tbl && tbl.dataset.tkey; if(!key) return;
+      cfApplyText(tx.dataset.cft, tx.value, key, false); return;
+    }
+  }
   if(ev.key!=='Enter') return;
   const i = ev.target.closest && ev.target.closest('input[data-cfv]'); if(!i) return;
   ev.preventDefault(); cfTimer && clearTimeout(cfTimer);
@@ -2396,8 +2572,9 @@ function q4Pareto(rows, total, n){
   }
   return { total: t, top10: topN, topN: n||Q4_TOP, p10: topN/t, k40: k };
 }
-/* Q4 清单的可筛选数值列（表头下面那行条件用的）。
-   判定列是文字、近 N 期是多项拼在一起，都不参与数值筛选。 */
+/* Q4 清单的可筛选列（表头下面那行条件用的）。
+   判定列是文字、近 N 期是多项拼在一起，都不参与筛选。
+   文字列（上级维度 / 名称 / 负责人）走 t 字段：关键字包含匹配 + 清单勾选（state.qpick）。 */
 const Q4_CF = {
   f1:   {k:'f1',   t:'加权预测',           v:r=>r.curF1},
   a:    {k:'a',    t:'订单销量',           v:r=>(r.curA==null?0:r.curA)},
@@ -2411,9 +2588,26 @@ const Q4_CF = {
     return (d==null || d==='') ? null : +d;
   }}
 };
+/* 文字列：取值函数（用于包含匹配与清单勾选） */
+const Q4_CF_TXT = {
+  aux:  {t:'上级维度', v:r=>r.auxName||''},   // 三级分类卡片=BU，Listing 卡片=三级分类
+  name: {t:'名称',     v:r=>r.name||''},
+  own:  {t:'负责人',   v:r=>r.ownName||''}
+};
 function q4CfMatch(r, key){
-  const f = state.cf[key]; if(!f) return true;
-  for(const k in f){
+  const f = state.cf[key];
+  const pick = state.qpick[key] || {};
+  const txtOn = Object.keys(pick).some(k=> pick[k] && pick[k].size);
+  if(!f && !txtOn) return true;
+  if(f) for(const k in f){
+    /* 文字条件 */
+    if(Q4_CF_TXT[k]){
+      const c = f[k];
+      if(!c || c.txt==null || String(c.txt).trim()==='') continue;
+      const val = String(Q4_CF_TXT[k].v(r));
+      if(val.indexOf(String(c.txt).trim())<0) return false;
+      continue;
+    }
     const d = Q4_CF[k]; if(!d) continue;
     const c = f[k];
     if(!c || c.v==null || !isFinite(c.v)) continue;     // 只选运算符没填数 → 不过滤
@@ -2421,19 +2615,57 @@ function q4CfMatch(r, key){
     if(v==null || Number.isNaN(v)) return false;        // 有条件下空值不显示（∞ 例外，按无穷大比）
     if(!cfHit(v, c.op, c.v)) return false;
   }
+  /* 清单勾选：勾中的名称才留下（空 Set = 不生效） */
+  for(const k in pick){
+    const set = pick[k];
+    if(!set || !set.size) continue;
+    const def = Q4_CF_TXT[k]; if(!def) continue;
+    if(!set.has(String(def.v(r)))) return false;
+  }
   return true;
 }
-const q4CfRows = (key, rows)=> (cfCount(key)>0) ? rows.filter(r=>q4CfMatch(r,key)) : rows;
-/* 条件行：11 列里只有 6 个数值列给输入框，名称列放「清空条件」 */
+const q4CfActive = (key)=>{
+  const pick = state.qpick[key] || {};
+  return cfCount(key)>0 || Object.keys(pick).some(k=> pick[k] && pick[k].size);
+};
+/* Q4 某张卡「当前数值条件过滤后、但未套清单勾选」的行集（给清单弹层生成完整候选清单用） */
+function cfQ4Rows(key){
+  const i = String(key).indexOf(':'); if(i<0) return [];
+  const kind = key.slice(0,i), dim = key.slice(i+1);
+  const all = (typeof q4Rows==='function') ? q4Rows(kind, dim) : [];
+  const bag = state.cf[key]||{};
+  return all.filter(r=>{
+    for(const k in bag){
+      const c=bag[k]; if(!c) continue;
+      if(Q4_CF_TXT[k]){ if(c.txt!=null && String(c.txt).trim()!=='' && String(Q4_CF_TXT[k].v(r)).indexOf(String(c.txt).trim())<0) return false; continue; }
+      const d=Q4_CF[k]; if(!d) continue;
+      if(c.v==null || !isFinite(c.v)) continue;
+      const v=d.v(r); if(v==null||Number.isNaN(v)) return false;
+      if(!cfHit(v,c.op,c.v)) return false;
+    }
+    return true;
+  });
+}
+const q4CfRows = (key, rows)=> q4CfActive(key) ? rows.filter(r=>q4CfMatch(r,key)) : rows;
+/* Q4 卡片头「筛选」按钮上的计数徽标：数值条件 + 清单勾选（清单按列算 1 个条件） */
+function q4CfBadge(key){
+  const pick = state.qpick[key] || {};
+  const n = cfCount(key) + Object.keys(pick).filter(k=> pick[k] && pick[k].size).length;
+  return n ? `<b>${n}</b>` : '';
+}
+/* 条件行：11 列里 3 个文字列给「关键字 + 清单」，6 个数值列给「运算符 + 数值」 */
 function q4CfRowHTML(key){
   if(!state.cfOpen[key]) return '';
   const cell = k => cfCellHTML(key, Q4_CF[k]);   // 它本身已经带 <th class="cfcell">，别再套一层
   return `<tr class="cfr">
-    <th></th>
-    <th style="text-align:left;padding-left:8px"><button class="cfclr" data-cfclr="${esc(key)}">清空条件</button></th>
-    <th></th>
+    ${cfTextHTML(key, 'aux', '上级维度')}
+    <th class="cfcell" data-c="name"><span class="cfin">
+      <input class="cft" type="search" data-cft="name" value="${esc((((state.cf[key]||{}).name)||{}).txt||'')}" placeholder="关键字" title="名称：输入关键字做包含匹配">
+      <button class="cfpick${(state.qpick[key]&&state.qpick[key].name&&state.qpick[key].name.size)?' on':''}" type="button" data-cfpick="name" title="名称：展开清单勾选要显示的项">清单${(state.qpick[key]&&state.qpick[key].name&&state.qpick[key].name.size)?` ${state.qpick[key].name.size}`:''}</button>
+    </span></th>
+    ${cfTextHTML(key, 'own', '负责人')}
     ${cell('f1')}${cell('a')}${cell('gap')}${cell('inv0')}${cell('d7')}${cell('days')}
-    <th></th><th></th>
+    <th class="cfcell"><button class="cfclr" data-cfclr="${esc(key)}">清空条件</button></th><th></th>
   </tr>`;
 }
 function q4CardHTML(kind, dimKey, rows, per, idx, scopeGap, totalN){
@@ -2478,7 +2710,7 @@ function q4CardHTML(kind, dimKey, rows, per, idx, scopeGap, totalN){
     <div class="q4h"><b>${cfg.label}</b><span class="q4sub">${DIM_LABEL[dimKey]||dimKey}</span>
       <span class="q4n">${rows.length}${(totalN!=null&&totalN!==rows.length)?` / ${totalN}`:''} 项</span>
       <button class="q4exp${state.cfOpen[key]?' on':''}" type="button" data-cfopen="${esc(key)}"
-        title="在表头下面展开一行条件（> ≥ < ≤ = + 数值），再点收起并复原">${FUNNEL}筛选${cfCount(key)?`<b>${cfCount(key)}</b>`:''}</button>
+        title="在表头下面展开一行条件：文字列填关键字/勾清单，数值列填运算符+数值，再点收起并复原">${FUNNEL}筛选${q4CfBadge(key)}</button>
       <button class="q4exp" type="button" data-q4exp="${key}" title="导出本表全部 ${rows.length} 项为 CSV（跟随当前筛选）">⬇ 导出</button></div>
     <div class="q4sum">${sumLine}</div>
     <div class="q4tw"><table class="q4t" data-tkey="${esc(key)}">

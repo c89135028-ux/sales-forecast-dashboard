@@ -1016,6 +1016,69 @@ out.Q4筛选 = (()=>{
       &&entries===entries2&&infOk&&closed&&restored?'OK':'FAIL');
 })();
 
+out.Q4清单勾选 = (()=>{
+  /* 用户 11-18：Q4 的三级分类/国家Listing/负责人（文字列）也要能筛，且「关键字 + 下拉勾选」两者都要。
+     本用例只验「勾选清单」这条路径（关键字路径由 Q4文字筛选 覆盖）：
+       ① 文字列条件行有 3 个关键字输入 + 3 个「清单」按钮
+       ② 勾选 Set 生效：被取消勾选的负责人，其行从结果里消失
+       ③ 全选/等于全量 = 不生效（空即默认）
+       ④ 清空条件按钮同时清 cf 与 qpick
+       ⑤ 数值条件与清单勾选取交集 */
+  const key = 'share:三级分类';
+  const first = () => (store['id:q4Grid']||'').split('<div class="q4card"')[1] || '';
+  const rowsOf = () => [...first().matchAll(/<td class="q4own"[^>]*>([^<]*)</g)].map(m=>m[1]);
+
+  document.body.classList.add('q4-only');
+  delete state.cfOpen[key]; delete state.cf[key]; delete state.qpick[key];
+  renderQ4();
+
+  state.cfOpen[key] = true; renderQ4();
+  const g1 = store['id:q4Grid']||'';
+  const txtIns  = (g1.match(/data-cft="(aux|name|own)"/g)||[]).length;
+  const pickBtns= (g1.match(/data-cfpick="(aux|name|own)"/g)||[]).length;
+
+  // ① 全量时的负责人集合
+  const all0 = q4Rows('share','三级分类');
+  const ownAll = [...new Set(all0.map(r=> String(r.ownName||'')))].sort();
+  const target = ownAll[0];                       // 去掉排第一的负责人
+
+  // ② 勾选：等于全量 → 不生效（行数不变）
+  state.qpick[key] = {own: new Set(ownAll)}; renderQ4();
+  const sameAsAll = rowsOf().length === Math.min(10, all0.length);
+
+  // ③ 取消一位负责人 → 其行消失
+  state.qpick[key] = {own: new Set(ownAll.filter(x=>x!==target))}; renderQ4();
+  const afterRows = rowsOf();
+  const gone = !afterRows.includes(target);
+  const keptCount = q4CfRows(key, q4Rows('share','三级分类')).length;
+  const expect = all0.filter(r=> String(r.ownName||'')!==target).length;
+  const countOk = keptCount === expect;
+
+  // ④ 全不选（空 Set）= 不生效
+  state.qpick[key] = {own: new Set()}; renderQ4();
+  const emptyNoEffect = rowsOf().length === Math.min(10, all0.length);
+
+  // ⑤ 数值条件 ∩ 清单：缺口 > 0 且 排除 target
+  state.cf[key] = {gap:{op:'>',v:0}};
+  state.qpick[key] = {own: new Set(ownAll.filter(x=>x!==target))};
+  renderQ4();
+  const bothKey = q4CfRows(key, q4Rows('share','三级分类'));
+  const bad = bothKey.filter(r=> !(r.curGap>0) || String(r.ownName||'')===target);
+  const bothOk = bad.length===0;
+  const badInfo = bad.slice(0,3).map(r=> (r.name||'?')+'/'+(r.ownName||'?')+'/gap='+r.curGap).join(' | ');
+
+  // ⑥ 清空条件：cf + qpick 一起清
+  delete state.cf[key]; delete state.qpick[key]; renderQ4();
+  const cleared = rowsOf().length === Math.min(10, all0.length);
+
+  document.body.classList.remove('q4-only');
+  renderAll();
+  return '文字列='+txtIns+' 清单按钮='+pickBtns+' 负责人全量='+ownAll.length
+    +' 等于全量不生效='+sameAsAll+' 去「'+target+'」后不含='+gone+' 计数='+keptCount+'/'+expect+'='+countOk
+    +' 空集不生效='+emptyNoEffect+' 数值∩清单='+bothOk+(badInfo?' ✕'+badInfo:'')+' 清空复原='+cleared
+    +' 判定='+(txtIns===3&&pickBtns===3&&sameAsAll&&gone&&countOk&&emptyNoEffect&&bothOk&&cleared?'OK':'FAIL');
+})();
+
 console.log(JSON.stringify(out,null,1));
 `;
 

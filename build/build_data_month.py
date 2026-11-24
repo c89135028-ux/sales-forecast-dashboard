@@ -31,14 +31,15 @@ SRCS = [
     r'C:/Users/Thinkpad/Downloads/日明细数据.xlsx',   # 完整 2026-10（订单 112,853，较 (39) 更完整；被 (39) 之后的源覆盖）
     r'E:/ziel浏览器下载/日明细数据 (2).xlsx',   # 2026-11（新月，17列齐全；同时是维度口径最新基准）
     r'E:/ziel浏览器下载/日明细数据 (6).xlsx',   # 2026-11（11.1-11.15，整月覆盖上一源）
+    r'E:/ziel浏览器下载/日明细数据 (8).xlsx',   # 2026-11（11.1-11.21，整月覆盖上一源）
 ]
 # 维度口径以「最新源」为准：BU / 三级分类 / 产品组 / 业务组 / 业务负责人
 # 用户 11-17：这五项基础信息「以我给你的表为准，表里都是最新最准确的」。
 # 属性可能**按站点不同**（实测 32 个 SKU 的负责人是巴西=蓝晓琳 / 墨西哥=吴珍妮），
 # 映射键必须 (最早SKU, 预测站点)，只按 SKU 会把两个负责人合并。
 LATEST_ATTR_SRC = [
-    r'E:/ziel浏览器下载/日明细数据 (6).xlsx',   # 2026-11 月表（11.1-11.15，最新）
-    r'E:/ziel浏览器下载/日明细数据 (7).xlsx',   # 2026-11-08 周表（最新）
+    r'E:/ziel浏览器下载/日明细数据 (8).xlsx',   # 2026-11 月表（11.1-11.21，最新）
+    r'E:/ziel浏览器下载/日明细数据 (9).xlsx',   # 2026-11-15 周表（最新）
 ]
 LATEST_ATTR_COLS = ['BU', '三级分类', '产品组', '业务组', '业务负责人']
 # 业务组 ↔ BU 归属表（用户 2026-11-10 给定）——**仅作兜底**：源表业务组为空时才用
@@ -229,6 +230,73 @@ def unify_attr_history(df, time_col):
     return df
 
 
+# 停产 SKU 负责人归属的查找键（用户 11-24：只给「站点 + 三级分类」）
+ORPHAN_OWN_KEY = ['三级分类', 'BU', '预测站点']
+
+
+def reassign_orphan_owner(df):
+    """停产 SKU（最新表里已没有）的负责人：按 (三级分类, BU, 预测站点) 归属到最新负责人。
+
+    用户 11-24：「全周期还残留 李灌蒿 / 蓝晓琳 …… 按照站点和三级分类，归属到最新负责人」——
+    这批 SKU 新旧表都查不到（早已停产），保留历史值不合理，改为按它所属的
+    **三级分类 + 站点** 去最新表里找当前负责人。
+
+    ⚠️ 键必须带 BU：单用 (三级分类, 站点) 有 6 组跨 BU 冲突（本期跨 BU 的
+    边桌 / 床头柜 / 斗柜 / 玄关桌 / 简易衣柜），带上 BU 后每组唯一（实测 0 冲突）。
+
+    取值规则：该键下最新表 Σ销售预测(加权) 最大的负责人。最新表里连该
+    (分类, BU, 站点) 都没有的组合，保留原值。
+    """
+    paths = [p for p in LATEST_ATTR_SRC if os.path.exists(p)]
+    if not paths:
+        print('停产 SKU 负责人归属：未找到最新基准文件，跳过')
+        return df
+    need = [*ORPHAN_OWN_KEY, '最早SKU', '业务负责人']
+    if not set(need).issubset(df.columns):
+        return df
+
+    frames = []
+    for p in paths:
+        d = pd.read_excel(p, sheet_name=0)
+        d = d[d.iloc[:, 0].astype(str) != '合计']
+        frames.append(d)
+    attr = pd.concat(frames, ignore_index=True)
+    for c in [*ORPHAN_OWN_KEY, '最早SKU', '业务负责人']:
+        attr[c] = attr[c].astype(str).str.strip()
+    attr = attr[(attr['三级分类'] != '') & (attr['BU'] != '') & (attr['业务负责人'] != '')]
+    if not len(attr):
+        return df
+    wcol = '销售预测(加权)'
+    attr['_w'] = (pd.to_numeric(attr[wcol], errors='coerce').fillna(0.0)
+                  if wcol in attr.columns else 0.0)
+
+    known = set(zip(attr['最早SKU'], attr['预测站点']))
+
+    g = attr.groupby([*ORPHAN_OWN_KEY, '业务负责人'])['_w'].sum().reset_index(name='w')
+    g = g.sort_values([*ORPHAN_OWN_KEY, 'w', '业务负责人'],
+                      ascending=[True, True, True, False, True])
+    top = g.drop_duplicates(ORPHAN_OWN_KEY)
+    mp = dict(zip(zip(top['三级分类'], top['BU'], top['预测站点']), top['业务负责人']))
+
+    is_orphan = pd.Series([k not in known for k in zip(df['最早SKU'], df['预测站点'])],
+                          index=df.index)
+    if not is_orphan.any():
+        print('停产 SKU 负责人归属：无停产 SKU，跳过')
+        return df
+    newv = pd.Series([mp.get((str(a).strip(), str(b).strip(), str(c).strip()))
+                      for a, b, c in zip(df['三级分类'], df['BU'], df['预测站点'])],
+                     index=df.index)
+    mask = is_orphan & newv.notna()
+    old = df['业务负责人'].astype(str).str.strip()
+    changed = int((mask & (old != newv.astype(str).str.strip())).sum())
+    df.loc[mask, '业务负责人'] = newv[mask]
+    n_miss = int((is_orphan & newv.isna()).sum())
+    print(f'停产 SKU 负责人归属：停产 {int(is_orphan.sum())} 行 → 按'
+          f'({"/".join(ORPHAN_OWN_KEY)}) 归属 {int(mask.sum())} 行（改写 {changed} 行）；'
+          f'最新表也查不到、保留原值 {n_miss} 行')
+    return df
+
+
 def main():
     df = merge_sources(SRCS)
     for c in ('最早SKU', '预测SKU'):
@@ -249,6 +317,8 @@ def main():
     df = apply_bu_group(df)
     # —— 停产品 SKU（最新表里已没有）：按最后出现周期的归属统一历史 ——
     df = unify_attr_history(df, TIME_COL)
+    # —— 停产 SKU 的负责人：按 (三级分类, BU, 预测站点) 归属到最新负责人（用户 11-24）——
+    df = reassign_orphan_owner(df)
 
     # 维度列兜底：源表若有缺失，归「（未标注）」而不是丢行，保证各维度合计守恒
     dims_order = ['业务组', 'BU', '产品组', '三级分类', '业务负责人']
