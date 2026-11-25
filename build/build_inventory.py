@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """把「MX&BR冲坑周跟进」表里的 FBA 库存三列抽成 inventory.json，供 Q4 清单使用。
 
-口径（用户 2026-11-11 指定 MX，2026-11-18 追加 BR）：
+口径（用户 2026-11-11 指定 MX，2026-11-18 追加 BR；2026-11-25 换 W46 表，只改 SRC）：
   · 三级分类：sheet「5.三级分类」，按 A 列国家（MX / BR）分别聚合，key = E 列，值 = BF/BG/BH 列
   · 国家Listing：sheet「6.Listing」，按 A 列国家分别聚合，key = G 列，值 = BV/BW/BX 列
     三列依次为：总可销售展示库存 / 7DMS / 可售天数；两张表表头都在第 4 行，数据从第 5 行起。
@@ -22,7 +22,7 @@ import openpyxl
 BUILD = pathlib.Path(__file__).resolve().parent
 OUT = BUILD / 'inventory.json'
 
-SRC = pathlib.Path(r'E:/ziel浏览器下载/MX&BR冲坑周跟进-W45.xlsx')
+SRC = pathlib.Path(r'E:/ziel浏览器下载/MX&BR冲坑周跟进-W46.xlsx')
 COUNTRIES = ('MX', 'BR')
 HEADER_ROW = 4
 
